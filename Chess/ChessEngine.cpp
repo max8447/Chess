@@ -97,6 +97,8 @@ bool ChessEngine::IsAllowedMove(int NewSquare, bool bRemoveCapturedPieces)
 
 	bool bIsMoveAllowed = SelectedPiece->IsAllowedMove(NewSquare);
 
+	// TODO: disallow jumping over pieces with bishop, rook and queen but allow it with knight
+
 	decltype(Pieces)::const_iterator CapturedPieceIt = GetPieceIt(NewSquare);
 
 	bool bHasPiece = CapturedPieceIt != Pieces.end();
@@ -116,11 +118,11 @@ bool ChessEngine::IsAllowedMove(int NewSquare, bool bRemoveCapturedPieces)
 	{
 		if (AbsDeltaRank == 1 && AbsDeltaFile == 1)
 		{
-			if (bHasPiece)
+			if (bHasPiece) // normal pawn capture
 			{
 				bIsMoveAllowed = true;
 			}
-			else
+			else // en passant capture
 			{
 				auto EnpassantRotateFunction = SelectedPiece->Color == White ? Piece::RotateCW : Piece::RotateCCW;
 
