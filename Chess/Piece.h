@@ -38,10 +38,16 @@ struct Piece
 	static constexpr std::array<int, 9> GetAvailableMoves(PieceType Type);
 
 	static constexpr std::pair<int, int> SquareToRankFile(int Square);
+
 	static constexpr int RankFileToSquare(int Rank, int File);
+	static constexpr int RankFileToSquare(std::pair<int, int> RankFile);
 
 	static constexpr std::pair<int, int> RotateCW(std::pair<int, int> RankFile);
+
 	static constexpr std::pair<int, int> RotateCCW(std::pair<int, int> RankFile);
+
+	static constexpr std::array<char, 3> RankFileToAlgebraic(std::pair<int, int> RankFile);
+	static constexpr std::pair<int, int> AlgebraicToRankFile(std::array<char, 2> Algebraic); // no safety guaranteed
 
 	static_assert(std::is_same_v<decltype(RotateCW), decltype(RotateCCW)>, "RotateCW and RotateCCW must always have the same signature!");
 };
@@ -69,16 +75,39 @@ constexpr int Piece::RankFileToSquare(int Rank, int File)
 	return Square;
 }
 
+constexpr int Piece::RankFileToSquare(std::pair<int, int> RankFile)
+{
+	const auto [Rank, File] = RankFile;
+
+	return RankFileToSquare(Rank, File);
+}
+
 constexpr std::pair<int, int> Piece::RotateCW(std::pair<int, int> RankFile)
 {
 	const auto [Rank, File] = RankFile;
 
-	return std::pair<int, int>(File, 7 - Rank);
+	return { File, 7 - Rank };
 }
 
 constexpr std::pair<int, int> Piece::RotateCCW(std::pair<int, int> RankFile)
 {
 	const auto [Rank, File] = RankFile;
 
-	return std::pair<int, int>(7 - File, Rank);
+	return { 7 - File, Rank };
+}
+
+constexpr std::array<char, 3> Piece::RankFileToAlgebraic(std::pair<int, int> RankFile)
+{
+	const auto [RotatedRank, RotatedFile] = RotateCCW(RankFile);
+
+	return {
+		(char)(RotatedRank + 'a'),
+		(char)(RotatedFile + '1'),
+		'\0',
+	};
+}
+
+constexpr std::pair<int, int> Piece::AlgebraicToRankFile(std::array<char, 2> Algebraic)
+{
+	return RotateCW({ Algebraic[0] - 'a', Algebraic[1] - '1' });
 }

@@ -22,3 +22,10 @@
 #include <vector>
 #include <functional>
 #include <array>
+
+
+#ifdef _DEBUG
+#include <chrono>
+
+#define INT3 __debugbreak()
+#endif
