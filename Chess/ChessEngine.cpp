@@ -26,9 +26,10 @@ ChessEngine::ChessEngine()
 
 	IM_ASSERT(bSuccess && "Failed to load pieces texture!");
 
-	LoadFENPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-	// LoadFENPosition("r1bqkbnr/pppp1ppp/2n5/4p3/1b1PP3/2N2N2/PPP2PPP/R1BQKB1R w KQkq - 2 4");
+	// LoadFENPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	// LoadFENPosition("r1bqkbnr/pppp1ppp/2n5/4p3/1b1PP3/2N2N2/PPP2PPP/R1BQK2R w KQkq - 2 4");
 	// LoadFENPosition("qqqqqqqq/qqqqqqqq/8/8/8/8/QQQQQQQQ/QQQQQQQQ w KQkq - 0 1");
+	// LoadFENPosition("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
 	// LoadFENPosition(NULL);
 }
 
@@ -36,10 +37,11 @@ void ChessEngine::LoadFENPosition(const char* FENString)
 {
 	Pieces.clear();
 
-	SelectedPieceMouseOffset = {};
+	SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
 	SelectedPiece = nullptr;
 
 	CurrentMove = White;
+	CastlingRights = {};
 	EnpassantSquare = -1;
 	HalfMoveClock = 0;
 	FullMoveCounter = 1;
@@ -76,7 +78,11 @@ void ChessEngine::LoadFENPosition(const char* FENString)
 		{
 			if (!bSetupCastling)
 			{
-				// no castling available (TODO)
+				CastlingRights.KingSide[0].Invalidate();
+				CastlingRights.KingSide[1].Invalidate();
+
+				CastlingRights.QueenSide[0].Invalidate();
+				CastlingRights.QueenSide[1].Invalidate();
 
 				bSetupCastling = true;
 			}
@@ -94,7 +100,7 @@ void ChessEngine::LoadFENPosition(const char* FENString)
 		{
 			if (!bSetupPlacement)
 			{
-				CurrentFile += c - '0' - 1;
+				CurrentFile += c - '0';
 			}
 			else if (!bSetupHalfMoveClock)
 			{
@@ -155,9 +161,40 @@ void ChessEngine::LoadFENPosition(const char* FENString)
 			}
 			else if (!bSetupCastling)
 			{
-				// castling stuff (TODO)
+				bool KingSideEnabled[2] = { false, false };
+				bool QueenSideEnabled[2] = { false, false };
 
-				while (!isspace(*FENString++));
+				FENString--;
+
+				while (!isspace(c = *FENString++))
+				{
+					PieceColor Color = isupper(c) ? White : Black;
+
+					switch (tolower(c))
+					{
+					case 'k':
+						KingSideEnabled[Color] = true;
+						break;
+					case 'q':
+						QueenSideEnabled[Color] = true;
+						break;
+					default:
+						IM_ASSERT(false);
+						break;
+					}
+				}
+
+				for (int i = 0; i < 2; i++)
+				{
+					if (!KingSideEnabled[i])
+					{
+						CastlingRights.KingSide[i].Invalidate();
+					}
+					if (!QueenSideEnabled[i])
+					{
+						CastlingRights.QueenSide[i].Invalidate();
+					}
+				}
 
 				bSetupCastling = true;
 			}
@@ -176,8 +213,6 @@ void ChessEngine::LoadFENPosition(const char* FENString)
 		}
 	}
 
-	CapturedPiece = Pieces.end();
-
 	IM_ASSERT(bSetupPlacement && bSetupCurrentMove && bSetupCastling && bSetupEnpassant && bSetupHalfMoveClock && bSetupFullMoveCounter);
 }
 
@@ -186,20 +221,17 @@ void ChessEngine::IterateSquares(std::function<bool(const ImVec2& Min, const ImV
 	const ImVec2 Size = ImGui::GetWindowSize();
 
 	const ImVec2 Center = Size / 2.f;
-	const float SmallestAxis = min(Center.x, Center.y);
-
-	const ImVec2 Radius = ImVec2(SmallestAxis, SmallestAxis) - PADDING;
-	const ImVec2 SquareRadius = (Radius - PADDING) / 4;
+	const ImVec2 SquareSize = GetSquareSize();
 
 	for (int Rank = 0; Rank < 8; Rank++)
 	{
 		for (int File = 0; File < 8; File++)
 		{
-			ImVec2 x = Center + (Rank - 4) * SquareRadius;
-			ImVec2 y = Center + (File - 4) * SquareRadius;
+			ImVec2 x = Center + (Rank - 4) * SquareSize;
+			ImVec2 y = Center + (File - 4) * SquareSize;
 
 			ImVec2 SquareMin = ImVec2(x.x, y.y);
-			ImVec2 SquareMax = SquareMin + SquareRadius;
+			ImVec2 SquareMax = SquareMin + SquareSize;
 
 			if (!Predicate(SquareMin, SquareMax, Rank, File))
 			{
@@ -209,7 +241,26 @@ void ChessEngine::IterateSquares(std::function<bool(const ImVec2& Min, const ImV
 	}
 }
 
-bool ChessEngine::IsAllowedMove(int NewSquare, decltype(Pieces)::const_iterator* OutCapturedPiece, int* OutEnpassantSquare) const
+std::vector<Move> ChessEngine::GetAvailableMoves(Piece* TargetPiece) const
+{
+	std::vector<Move> Moves;
+
+	IterateSquares([&Moves, TargetPiece, this](const ImVec2& Min, const ImVec2& Max, int Rank, int File) -> bool
+		{
+			int Square = Piece::RankFileToSquare({ Rank, File });
+
+			if (IsAllowedMove(TargetPiece, Square))
+			{
+				Moves.push_back(Move{ TargetPiece->Square, Square });
+			}
+
+			return true;
+		});
+
+	return Moves;
+}
+
+bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Pieces)::const_iterator* OutCapturedPiece, int* OutEnpassantSquare, Move* OutCastledRookMove) const
 {
 #ifdef _DEBUG
 	std::chrono::steady_clock::time_point IsAllowedMoveStart = std::chrono::high_resolution_clock::now();
@@ -217,22 +268,27 @@ bool ChessEngine::IsAllowedMove(int NewSquare, decltype(Pieces)::const_iterator*
 
 	IM_ASSERT(NewSquare >= 0 && NewSquare <= 63);
 
-	auto RotateFunction = SelectedPiece->Color == White ? Piece::RotateCCW : Piece::RotateCW;
-	auto RotateBackFunction = SelectedPiece->Color == White ? Piece::RotateCW : Piece::RotateCCW;
+	if (MovingPiece->Square == NewSquare)
+	{
+		return false; // no move happened
+	}
 
-	auto [OldRank, OldFile] = RotateFunction(Piece::SquareToRankFile(SelectedPiece->Square));
-	auto [NewRank, NewFile] = RotateFunction(Piece::SquareToRankFile(NewSquare));
+	const auto RotateFunction = MovingPiece->Color == White ? Piece::RotateCCW : Piece::RotateCW;
+	const auto RotateBackFunction = MovingPiece->Color == White ? Piece::RotateCW : Piece::RotateCCW;
+	
+	const auto [OldRank, OldFile] = RotateFunction(Piece::SquareToRankFile(MovingPiece->Square));
+	const auto [NewRank, NewFile] = RotateFunction(Piece::SquareToRankFile(NewSquare));
+	
+	const int DeltaRank = NewRank - OldRank;
+	const int DeltaFile = NewFile - OldFile;
+	
+	const int AbsDeltaRank = abs(DeltaRank);
+	const int AbsDeltaFile = abs(DeltaFile);
+	
+	const int DeltaRankDir = AbsDeltaRank == 0 ? 0 : DeltaRank / AbsDeltaRank;
+	const int DeltaFileDir = AbsDeltaFile == 0 ? 0 : DeltaFile / AbsDeltaFile;
 
-	int DeltaRank = NewRank - OldRank;
-	int DeltaFile = NewFile - OldFile;
-
-	int AbsDeltaRank = abs(DeltaRank);
-	int AbsDeltaFile = abs(DeltaFile);
-
-	int DeltaRankDir = AbsDeltaRank == 0 ? 0 : DeltaRank / AbsDeltaRank;
-	int DeltaFileDir = AbsDeltaFile == 0 ? 0 : DeltaFile / AbsDeltaFile;
-
-	bool bIsMoveAllowed = SelectedPiece->IsAllowedMove(NewSquare);
+	bool bIsMoveAllowed = MovingPiece->IsAllowedMove(NewSquare);
 
 	decltype(Pieces)::const_iterator CapturedPiece = GetPieceIt(NewSquare);
 
@@ -246,7 +302,7 @@ bool ChessEngine::IsAllowedMove(int NewSquare, decltype(Pieces)::const_iterator*
 
 	if (bHasPiece)
 	{
-		if ((*CapturedPiece)->Color == SelectedPiece->Color)
+		if ((*CapturedPiece)->Color == MovingPiece->Color)
 		{
 			bHasPiece = false;
 			bHasPieceOfSameColor = true;
@@ -257,9 +313,9 @@ bool ChessEngine::IsAllowedMove(int NewSquare, decltype(Pieces)::const_iterator*
 
 	bool bAllowEnpassant = false;
 
-	if (SelectedPiece->Type == Pawn)
+	if (MovingPiece->Type == Pawn)
 	{
-		if (AbsDeltaRank == 1 && AbsDeltaFile == 1)
+		if (DeltaRank == 1 && AbsDeltaFile == 1)
 		{
 			if (bHasPiece) // normal pawn capture
 			{
@@ -277,7 +333,7 @@ bool ChessEngine::IsAllowedMove(int NewSquare, decltype(Pieces)::const_iterator*
 
 					if (bHasPiece)
 					{
-						if ((*EnpassantPieceIt)->Color != SelectedPiece->Color &&
+						if ((*EnpassantPieceIt)->Color != MovingPiece->Color &&
 							(*EnpassantPieceIt)->Type == Pawn)
 						{
 							bIsMoveAllowed = true;
@@ -307,11 +363,11 @@ bool ChessEngine::IsAllowedMove(int NewSquare, decltype(Pieces)::const_iterator*
 			bIsMoveAllowed = false;
 		}
 	}
-	else if (SelectedPiece->Type == Bishop || SelectedPiece->Type == Rook || SelectedPiece->Type == Queen)
+	else if (MovingPiece->Type == Bishop || MovingPiece->Type == Rook || MovingPiece->Type == Queen)
 	{
 		bool bRayHitPiece = false;
 
-		auto CheckSquare = [&bIsMoveAllowed, &bRayHitPiece, this](int RankToCheck, int FileToCheck) -> bool
+		auto CheckSquare = [&bIsMoveAllowed, &bRayHitPiece, MovingPiece, this](int RankToCheck, int FileToCheck) -> bool
 			{
 				if (bRayHitPiece)
 				{
@@ -321,7 +377,7 @@ bool ChessEngine::IsAllowedMove(int NewSquare, decltype(Pieces)::const_iterator*
 
 				if (Piece* SkippedPiece = GetPiece(RankToCheck, FileToCheck))
 				{
-					if (SkippedPiece->Color == SelectedPiece->Color)
+					if (SkippedPiece->Color == MovingPiece->Color)
 					{
 						bIsMoveAllowed = false;
 						return true;
@@ -399,9 +455,66 @@ bool ChessEngine::IsAllowedMove(int NewSquare, decltype(Pieces)::const_iterator*
 			}
 		}
 	}
-	else if (SelectedPiece->Type == King)
+	else if (MovingPiece->Type == King)
 	{
-		// CASTLING: TODO
+		if (!bIsMoveAllowed) // might be trying to castle?
+		{
+			if (NewFile + DeltaFileDir >= 0 && NewFile + DeltaFileDir <= 7 &&
+				OldFile + DeltaFileDir >= 0 && OldFile + DeltaFileDir <= 7)
+			{
+				int CastlingRookSquare = Piece::RankFileToSquare(RotateBackFunction({ OldRank, NewFile + DeltaFileDir }));
+				Piece* CastlingRook = GetPiece(CastlingRookSquare);
+
+				if (!CastlingRook)
+				{
+					if (NewFile + 2 * DeltaFileDir >= 0 && NewFile + 2 * DeltaFileDir <= 7)
+					{
+						CastlingRookSquare = Piece::RankFileToSquare(RotateBackFunction({ OldRank, NewFile + 2 * DeltaFileDir }));
+						CastlingRook = GetPiece(CastlingRookSquare);
+					}
+				}
+
+				if (CastlingRook && CastlingRook->Type == Rook && CastlingRook->Color == MovingPiece->Color)
+				{
+					int SquareBetween = Piece::RankFileToSquare(RotateBackFunction({ OldRank, OldFile + DeltaFileDir }));
+					Piece* PieceBetween = GetPiece(SquareBetween);
+
+					if (!bHasPiece && !PieceBetween)
+					{
+						auto AllowCastle = [&bIsMoveAllowed, &OutCastledRookMove, CastlingRookSquare, SquareBetween]()
+							{
+								bIsMoveAllowed = true;
+
+								if (OutCastledRookMove)
+								{
+									*OutCastledRookMove = {
+										CastlingRookSquare,	// old rook square
+										SquareBetween,		// new rook square
+									};
+								}
+							};
+
+						Move KingSideCastle = CastlingRights.KingSide[MovingPiece->Color];
+						Move QueenSideCastle = CastlingRights.QueenSide[MovingPiece->Color];
+
+						if (KingSideCastle.IsValid() && NewSquare == KingSideCastle.NewSquare)
+						{
+							AllowCastle();
+						}
+						else if (QueenSideCastle.IsValid() && NewSquare == QueenSideCastle.NewSquare)
+						{
+							int SecondSquareBetween = Piece::RankFileToSquare(RotateBackFunction({ OldRank, NewFile + DeltaFileDir }));
+							Piece* SecondPieceBetween = GetPiece(SecondSquareBetween);
+
+							if (!SecondPieceBetween)
+							{
+								AllowCastle();
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	if (!bAllowEnpassant && bIsMoveAllowed)
@@ -422,27 +535,133 @@ bool ChessEngine::IsAllowedMove(int NewSquare, decltype(Pieces)::const_iterator*
 
 #ifdef _DEBUG
 	std::chrono::steady_clock::time_point IsAllowedMoveEnd = std::chrono::high_resolution_clock::now();
-	std::chrono::microseconds IsAllowedMoveDuration = std::chrono::duration_cast<std::chrono::microseconds>(IsAllowedMoveEnd - IsAllowedMoveStart);
+	std::chrono::nanoseconds IsAllowedMoveDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(IsAllowedMoveEnd - IsAllowedMoveStart);
 
-	// printf(__FUNCTION__" took %lld us\n", IsAllowedMoveDuration.count());
+	printf(__FUNCTION__" took %lld ns\n", IsAllowedMoveDuration.count());
 #endif
 
 	return bIsMoveAllowed;
 }
 
-void ChessEngine::FinishMove()
+bool ChessEngine::IsInCheck(PieceColor Color) const
+{
+	// TODO: unfinished
+	INT3;
+
+	Piece* King = GetPiece(PieceType::King, Color);
+
+	IM_ASSERT(King);
+
+	const auto RotateFunction = Color == White ? Piece::RotateCCW : Piece::RotateCW;
+
+	const auto [Rank, File] = RotateFunction(Piece::SquareToRankFile(King->Square));
+
+	// check ranks first
+
+	for (int CurrentRank = Rank; CurrentRank < 7; CurrentRank++)
+	{
+		if (CurrentRank < 0 || CurrentRank > 7)
+		{
+			break;
+		}
+
+		const auto [RotatedCurrentRank, RotatedCurrentFile] = RotateFunction({ CurrentRank, File });
+
+		Piece* HitPiece = GetPiece(RotatedCurrentRank, RotatedCurrentFile);
+
+		if (HitPiece)
+		{
+			int AllowedDistance = Piece::GetAvailableMoves(HitPiece->Type)[1];
+
+			if (AllowedDistance > 0 && AllowedDistance >= CurrentRank - Rank)
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+void ChessEngine::RemoveCastlingRights(int MovedSquare, PieceColor Color)
+{
+	const auto [OldRank, OldFile] = Piece::RotateCCW(Piece::SquareToRankFile(MovedSquare));
+	const auto [DefaultKingRank, DefaultKingFile] = Piece::RotateCCW(Piece::SquareToRankFile(CastlingRights.KingSide[Color].OldSquare));
+
+	if (OldFile - DefaultKingFile > 0) // king side
+	{
+		CastlingRights.KingSide[Color].Invalidate();
+	}
+	else // queen side
+	{
+		CastlingRights.QueenSide[Color].Invalidate();
+	}
+}
+
+void ChessEngine::FinishMove(Piece* MovingPiece)
 {
 	if (CurrentMove == Black)
 	{
 		FullMoveCounter++;
 	}
 
-	if (SelectedPiece->Type == Pawn)
+	if (MovingPiece->Type == Pawn)
 	{
 		HalfMoveClock = 0;
 	}
 
 	CurrentMove = (PieceColor)(1 - CurrentMove);
+}
+
+void ChessEngine::TryMoveTo(Piece* MovingPiece, int NewSquare)
+{
+	decltype(Pieces)::const_iterator CapturedPiece;
+
+	Move CastledRookMove;
+	CastledRookMove.Invalidate();
+
+	bool bIsMoveAllowed = IsAllowedMove(MovingPiece, NewSquare, &CapturedPiece, &EnpassantSquare, &CastledRookMove);
+
+	if (bIsMoveAllowed)
+	{
+		LastMove.OldSquare = MovingPiece->Square;
+		LastMove.NewSquare = NewSquare;
+
+		MovingPiece->Square = NewSquare;
+
+		HalfMoveClock++; // this *might* get set to zero in CapturePiece() or FinishMove()
+
+		if (CastledRookMove.IsValid())
+		{
+			Piece* CastledRook = GetPiece(CastledRookMove.OldSquare);
+
+			IM_ASSERT(CastledRook && !CastledRookMove.IsZero());
+
+			CastledRook->Square = CastledRookMove.NewSquare;
+		}
+
+		if (MovingPiece->Type == King)
+		{
+			CastlingRights.KingSide[MovingPiece->Color].Invalidate();
+			CastlingRights.QueenSide[MovingPiece->Color].Invalidate();
+		}
+		else if (MovingPiece->Type == Rook)
+		{
+			RemoveCastlingRights(LastMove.OldSquare, MovingPiece->Color);
+		}
+
+		if (CapturedPiece != Pieces.end())
+		{
+			if ((*CapturedPiece)->Type == Rook)
+			{
+				RemoveCastlingRights(LastMove.NewSquare, (*CapturedPiece)->Color);
+			}
+
+			CapturePiece(CapturedPiece);
+		}
+
+		FinishMove(MovingPiece);
+	}
 }
 
 void ChessEngine::SnapSelectedPiece(const ImVec2& Pos)
@@ -459,28 +678,7 @@ void ChessEngine::SnapSelectedPiece(const ImVec2& Pos)
 		return;
 	}
 
-	if (SelectedPiece->Square == NewSquare)
-	{
-		return; // no move happened
-	}
-
-	bool bIsMoveAllowed = IsAllowedMove(NewSquare, &CapturedPiece, &EnpassantSquare);
-
-	if (bIsMoveAllowed)
-	{
-		LastMove.OldSquare = SelectedPiece->Square;
-		LastMove.NewSquare = NewSquare;
-
-		SelectedPiece->Square = NewSquare;
-		HalfMoveClock++; // this *might* get set to zero in one of the following two calls
-
-		if (CapturedPiece != Pieces.end())
-		{
-			CapturePiece();
-		}
-
-		FinishMove();
-	}
+	TryMoveTo(SelectedPiece, NewSquare);
 }
 
 void ChessEngine::UpdateSelectedPiece(const ImVec2& Pos)
@@ -558,9 +756,13 @@ void ChessEngine::HandleInput()
 	}
 }
 
-void ChessEngine::CapturePiece()
+void ChessEngine::CapturePiece(decltype(Pieces)::const_iterator CapturedPiece)
 {
+	IM_ASSERT(CapturedPiece != Pieces.end());
+
 	HalfMoveClock = 0;
+
+	CapturedPieces.push_back(std::make_unique<Piece>(**CapturedPiece));
 	Pieces.erase(CapturedPiece);
 }
 
@@ -581,6 +783,19 @@ Piece* ChessEngine::GetPiece(int Square) const
 	for (const auto& Piece : Pieces)
 	{
 		if (Piece->Square == Square)
+		{
+			return Piece.get();
+		}
+	}
+
+	return nullptr;
+}
+
+Piece* ChessEngine::GetPiece(PieceType Type, PieceColor Color) const
+{
+	for (const auto& Piece : Pieces)
+	{
+		if (Piece->Type == Type && Piece->Color == Color)
 		{
 			return Piece.get();
 		}
@@ -610,23 +825,18 @@ int ChessEngine::GetSquare(const ImVec2& Pos) const
 
 std::pair<ImVec2, ImVec2> ChessEngine::GetSquare(std::pair<int, int> RankFile) const
 {
-	const ImVec2 MousePos = ImGui::GetMousePos();
-
 	const ImVec2 Size = ImGui::GetWindowSize();
 
 	const ImVec2 Center = Size / 2.f;
-	const float SmallestAxis = min(Center.x, Center.y);
-
-	const ImVec2 Radius = ImVec2(SmallestAxis, SmallestAxis) - PADDING;
-	const ImVec2 SquareRadius = (Radius - PADDING) / 4;
+	const ImVec2 SquareSize = GetSquareSize();
 
 	const auto [Rank, File] = RankFile;
 
-	ImVec2 X = Center + (Rank - 4) * SquareRadius;
-	ImVec2 Y = Center + (File - 4) * SquareRadius;
+	ImVec2 X = Center + (Rank - 4) * SquareSize;
+	ImVec2 Y = Center + (File - 4) * SquareSize;
 
 	ImVec2 Min = ImVec2(X.x, Y.y);
-	ImVec2 Max = Min + SquareRadius;
+	ImVec2 Max = Min + SquareSize;
 
 	return { Min, Max };
 }
@@ -661,7 +871,7 @@ decltype(ChessEngine::Pieces)::const_iterator ChessEngine::GetPieceIt(int Square
 		});
 }
 
-void ChessEngine::DrawPiece(const ImVec2& Pos, PieceType Type, PieceColor Color) const
+ImVec2 ChessEngine::GetSquareSize() const
 {
 	const ImVec2 Size = ImGui::GetWindowSize();
 
@@ -669,12 +879,17 @@ void ChessEngine::DrawPiece(const ImVec2& Pos, PieceType Type, PieceColor Color)
 	const float SmallestAxis = min(Center.x, Center.y);
 
 	const ImVec2 Radius = ImVec2(SmallestAxis, SmallestAxis) - PADDING;
-	const ImVec2 SquareRadius = (Radius - PADDING) / 4;
+	const ImVec2 SquareSize = (Radius - PADDING) / 4.f;
 
+	return SquareSize;
+}
+
+void ChessEngine::DrawPiece(const ImVec2& Pos, const ImVec2& PieceSize, PieceType Type, PieceColor Color, bool bCaptured) const
+{
 	ImVec2 p_min = Pos;
 	ImVec2 uv_min = ImVec2((float)Type		 / 6.f,	(float)Color	   / 2.f);
 
-	ImVec2 p_max = Pos + SquareRadius;
+	ImVec2 p_max = Pos + PieceSize;
 	ImVec2 uv_max = ImVec2((float)(Type + 1) / 6.f, (float)(Color + 1) / 2.f);
 
 	ImDrawList* DrawList = ImGui::GetWindowDrawList();
@@ -682,29 +897,26 @@ void ChessEngine::DrawPiece(const ImVec2& Pos, PieceType Type, PieceColor Color)
 	DrawList->AddImage((ImTextureID)ImageTexture, p_min, p_max, uv_min, uv_max);
 }
 
-void ChessEngine::DrawPiece(int Square, PieceType Type, PieceColor Color) const
+void ChessEngine::DrawPiece(int Square, PieceType Type, PieceColor Color, bool bCaptured) const
 {
 	IM_ASSERT(Square >= 0 && Square <= 63);
 
 	const ImVec2 Size = ImGui::GetWindowSize();
 
 	const ImVec2 Center = Size / 2.f;
-	const float SmallestAxis = min(Center.x, Center.y);
-
-	const ImVec2 Radius = ImVec2(SmallestAxis, SmallestAxis) - PADDING;
-	const ImVec2 SquareRadius = (Radius - PADDING) / 4;
+	const ImVec2 SquareSize = GetSquareSize();
 
 	const auto [Rank, File] = Piece::SquareToRankFile(Square);
 
-	ImVec2 x = Center + (Rank - 4) * SquareRadius;
-	ImVec2 y = Center + (File - 4) * SquareRadius;
+	ImVec2 x = Center + (Rank - 4) * SquareSize;
+	ImVec2 y = Center + (File - 4) * SquareSize;
 
-	return DrawPiece(ImVec2(x.x, y.y), Type, Color);
+	return DrawPiece(ImVec2(x.x, y.y), SquareSize, Type, Color, bCaptured);
 }
 
-void ChessEngine::DrawPiece(const Piece& Piece) const
+void ChessEngine::DrawPiece(const Piece& Piece, bool bCaptured) const
 {
-	return DrawPiece(Piece.Square, Piece.Type, Piece.Color);
+	return DrawPiece(Piece.Square, Piece.Type, Piece.Color, bCaptured);
 }
 
 #ifdef _DEBUG
@@ -780,7 +992,7 @@ void ChessEngine::DrawSelectedPiece() const
 		DrawList->ChannelsSplit(2);
 		DrawList->ChannelsSetCurrent(1);
 
-		DrawPiece(MousePos - SelectedPieceMouseOffset, SelectedPiece->Type, SelectedPiece->Color);
+		DrawPiece(MousePos - SelectedPieceMouseOffset, GetSquareSize(), SelectedPiece->Type, SelectedPiece->Color, false);
 
 		DrawList->ChannelsSetCurrent(0);
 	}
@@ -810,7 +1022,9 @@ void ChessEngine::DrawMoveInfo() const
 
 	// EnpassantSquare
 
-	if (EnpassantSquare != -1)
+	constexpr bool bDrawEnpassantSquare = false;
+
+	if (bDrawEnpassantSquare && EnpassantSquare != -1)
 	{
 		const auto [EnpassantSquareMin, EnpassantSquareMax] = GetSquare(Piece::SquareToRankFile(EnpassantSquare));
 
@@ -829,7 +1043,7 @@ void ChessEngine::DrawMoveInfo() const
 
 	// LastMove
 
-	if (LastMove.OldSquare != -1 && LastMove.NewSquare != -1)
+	if (LastMove.IsValid())
 	{
 		const auto [LastMoveOldSquareMin, LastMoveOldSquareMax] = GetSquare(Piece::SquareToRankFile(LastMove.OldSquare));
 		const auto [LastMoveNewSquareMin, LastMoveNewSquareMax] = GetSquare(Piece::SquareToRankFile(LastMove.NewSquare));
@@ -854,7 +1068,7 @@ void ChessEngine::DrawAllowedMoves() const
 
 			decltype(Pieces)::const_iterator OutCaputedPiece = Pieces.end();
 
-			if (IsAllowedMove(Square, &OutCaputedPiece, nullptr))
+			if (IsAllowedMove(SelectedPiece, Square, &OutCaputedPiece, nullptr))
 			{
 				float Diameter = (Max - Min).x;
 
@@ -876,17 +1090,37 @@ void ChessEngine::DrawPieces() const
 {
 	for (const auto& Piece : Pieces)
 	{
-		bool bShouldDrawPiece = Piece.get() != SelectedPiece;
-
-		if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left))
-		{
-			bShouldDrawPiece = true;
-		}
+		bool bShouldDrawPiece =
+			Piece.get() != SelectedPiece || !ImGui::IsMouseDragging(ImGuiMouseButton_Left);
 
 		if (bShouldDrawPiece)
 		{
-			DrawPiece(*Piece);
+			DrawPiece(*Piece, false);
 		}
+	}
+}
+
+// TODO: make it draw them better
+void ChessEngine::DrawCapturedPieces() const
+{
+	const ImVec2 SquareSize = GetSquareSize();
+	const ImVec2 PieceSize = SquareSize / 2.f;
+
+	ImDrawList* DrawList = ImGui::GetWindowDrawList();
+
+	ImVec2 WhitePos = GetSquare(std::pair{ 8, 0 }).first + PADDING + ImVec2(PADDING.x, 0.f);
+	ImVec2 BlackPos = GetSquare(std::pair{ 8, 7 }).first + PADDING + ImVec2(PADDING.x, 0.f);
+
+	for (const auto& CapturedPiece : CapturedPieces)
+	{
+		ImVec2& Pos = CapturedPiece->Color == White ? WhitePos : BlackPos;
+
+		ImU32 BGColor = CapturedPiece->Color == White ? COL_WHITE : COL_BLACK;
+
+		DrawList->AddRectFilled(Pos, Pos + PieceSize, BGColor);
+		DrawPiece(Pos, PieceSize, CapturedPiece->Type, CapturedPiece->Color, true);
+
+		Pos.x += PieceSize.x;
 	}
 }
 
@@ -906,6 +1140,7 @@ void ChessEngine::Draw() const
 	DrawSelectedPiece();
 	DrawAllowedMoves();
 	DrawPieces();
+	DrawCapturedPieces();
 
 #ifdef _DEBUG
 	DrawMarkedSquares();

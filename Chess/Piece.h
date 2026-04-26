@@ -33,6 +33,13 @@ struct Piece
 	{
 	}
 
+	Piece(const Piece& InPiece)
+		: Square(InPiece.Square)
+		, Type(InPiece.Type)
+		, Color(InPiece.Color)
+	{
+	}
+
 	bool IsAllowedMove(int NewSquare) const;
 
 	static constexpr std::array<int, 9> GetAvailableMoves(PieceType Type);
@@ -43,8 +50,8 @@ struct Piece
 	static constexpr int RankFileToSquare(std::pair<int, int> RankFile);
 
 	static constexpr std::pair<int, int> RotateCW(std::pair<int, int> RankFile);
-
 	static constexpr std::pair<int, int> RotateCCW(std::pair<int, int> RankFile);
+	static constexpr std::pair<int, int> Rotate180(std::pair<int, int> RankFile);
 
 	static constexpr std::array<char, 3> RankFileToAlgebraic(std::pair<int, int> RankFile);
 	static constexpr std::pair<int, int> AlgebraicToRankFile(std::array<char, 2> Algebraic); // no safety guaranteed
@@ -96,9 +103,16 @@ constexpr std::pair<int, int> Piece::RotateCCW(std::pair<int, int> RankFile)
 	return { 7 - File, Rank };
 }
 
+inline constexpr std::pair<int, int> Piece::Rotate180(std::pair<int, int> RankFile)
+{
+	const auto [Rank, File] = RankFile;
+
+	return { 7 - File, 7 - Rank };
+}
+
 constexpr std::array<char, 3> Piece::RankFileToAlgebraic(std::pair<int, int> RankFile)
 {
-	const auto [RotatedRank, RotatedFile] = RotateCCW(RankFile);
+	const auto [RotatedRank, RotatedFile] = RotateCCW(Rotate180(RankFile));
 
 	return {
 		(char)(RotatedRank + 'a'),
@@ -109,5 +123,5 @@ constexpr std::array<char, 3> Piece::RankFileToAlgebraic(std::pair<int, int> Ran
 
 constexpr std::pair<int, int> Piece::AlgebraicToRankFile(std::array<char, 2> Algebraic)
 {
-	return RotateCW({ Algebraic[0] - 'a', Algebraic[1] - '1' });
+	return RotateCCW(Rotate180({ Algebraic[0] - 'a', Algebraic[1] - '1' }));
 }

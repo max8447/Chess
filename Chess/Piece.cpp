@@ -4,11 +4,11 @@ bool Piece::IsAllowedMove(int NewSquare) const
 {
 	std::array<int, 9> AllowedMoves = GetAvailableMoves(Type);
 
-	auto RotateFunction = Color == White ? RotateCCW : RotateCW;
+	const auto RotateFunction = Color == White ? RotateCCW : RotateCW;
 
-	auto [OldRank, OldFile] = RotateFunction(SquareToRankFile(Square));
-	auto [NewRank, NewFile] = RotateFunction(SquareToRankFile(NewSquare));
-
+	const auto [OldRank, OldFile] = RotateFunction(SquareToRankFile(Square));
+	const auto [NewRank, NewFile] = RotateFunction(SquareToRankFile(NewSquare));
+	
 	int DeltaRank = NewRank - OldRank;
 	int DeltaFile = NewFile - OldFile;
 
