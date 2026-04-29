@@ -46,12 +46,12 @@ struct Move
 struct CastlingRights
 {
 	Move KingSide[2] = {
-		Move{ "e1", "g1" }, // white
-		Move{ "e8", "g8" }, // black
+		Move{ e1, g1 }, // white
+		Move{ e8, g8 }, // black
 	};
 	Move QueenSide[2] = {
-		Move{ "e1", "c1" }, // white
-		Move{ "e8", "c8" }, // black
+		Move{ e1, c1 }, // white
+		Move{ e8, c8 }, // black
 	};
 };
 

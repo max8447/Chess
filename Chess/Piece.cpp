@@ -1,13 +1,52 @@
 #include "Piece.h"
 
+int Piece::GetDirection() const
+{
+	return Color == White ? 1 : -1;
+}
+
+std::pair<int, int> Piece::GetRankFile(int Square) const
+{
+	if (Square == -1)
+	{
+		Square = this->Square;
+	}
+
+	const auto [Rank, File] = SquareToRankFile(Square);
+
+	if (Color == Black)
+	{
+		return { 7 - Rank, 7 - File };
+	}
+	else
+	{
+		return { Rank, File };
+	}
+}
+
+int Piece::GetSquare(int Rank, int File) const
+{
+	if (Rank == -1 || File == -1)
+	{
+		Rank = SquareToRankFile(Square).first;
+		File = SquareToRankFile(Square).second;
+	}
+
+	if (Color == Black)
+	{
+		Rank = 7 - Rank;
+		File = 7 - File;
+	}
+
+	return RankFileToSquare(Rank, File);
+}
+
 bool Piece::IsAllowedMove(int NewSquare) const
 {
 	std::array<int, 9> AllowedMoves = GetAvailableMoves(Type);
 
-	const auto RotateFunction = Color == White ? RotateCCW : RotateCW;
-
-	const auto [OldRank, OldFile] = RotateFunction(SquareToRankFile(Square));
-	const auto [NewRank, NewFile] = RotateFunction(SquareToRankFile(NewSquare));
+	const auto [OldRank, OldFile] = GetRankFile();
+	const auto [NewRank, NewFile] = GetRankFile(NewSquare);
 	
 	int DeltaRank = NewRank - OldRank;
 	int DeltaFile = NewFile - OldFile;

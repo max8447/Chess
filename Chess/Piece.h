@@ -18,6 +18,18 @@ enum PieceColor
 	Black
 };
 
+enum Square
+{
+	a1, b1, c1, d1, e1, f1, g1, h1,
+	a2, b2, c2, d2, e2, f2, g2, h2,
+	a3, b3, c3, d3, e3, f3, g3, h3,
+	a4, b4, c4, d4, e4, f4, g4, h4,
+	a5, b5, c5, d5, e5, f5, g5, h5,
+	a6, b6, c6, d6, e6, f6, g6, h6,
+	a7, b7, c7, d7, e7, f7, g7, h7,
+	a8, b8, c8, d8, e8, f8, g8, h8
+};
+
 struct Piece
 {
 	int Square;
@@ -40,6 +52,10 @@ struct Piece
 	{
 	}
 
+	int GetDirection() const;
+	std::pair<int, int> GetRankFile(int Square = -1) const;
+	int GetSquare(int Rank = -1, int File = -1) const;
+
 	bool IsAllowedMove(int NewSquare) const;
 
 	static constexpr std::array<int, 9> GetAvailableMoves(PieceType Type);
@@ -49,14 +65,14 @@ struct Piece
 	static constexpr int RankFileToSquare(int Rank, int File);
 	static constexpr int RankFileToSquare(std::pair<int, int> RankFile);
 
-	static constexpr std::pair<int, int> RotateCW(std::pair<int, int> RankFile);
-	static constexpr std::pair<int, int> RotateCCW(std::pair<int, int> RankFile);
-	static constexpr std::pair<int, int> Rotate180(std::pair<int, int> RankFile);
-
-	static constexpr std::array<char, 3> RankFileToAlgebraic(std::pair<int, int> RankFile);
+	static constexpr std::array<char, 3> RankFileToAlgebraic(int Rank, int File);
 	static constexpr std::pair<int, int> AlgebraicToRankFile(std::array<char, 2> Algebraic); // no safety guaranteed
 
-	static_assert(std::is_same_v<decltype(RotateCW), decltype(RotateCCW)>, "RotateCW and RotateCCW must always have the same signature!");
+	static constexpr std::pair<int, int> RotateCW(std::pair<int, int> RankFile);	// only use in graphic contexts
+	static constexpr std::pair<int, int> RotateCCW(std::pair<int, int> RankFile);	// only use in graphic contexts
+
+	static constexpr int RotateCW(int Square);	// only use in graphic contexts
+	static constexpr int RotateCCW(int Square);	// only use in graphic contexts
 };
 
 constexpr std::pair<int, int> Piece::SquareToRankFile(int Square)
@@ -64,20 +80,12 @@ constexpr std::pair<int, int> Piece::SquareToRankFile(int Square)
 	int Rank = Square / 8;
 	int File = Square % 8;
 
-	return RotateCW({ Rank, File });
+	return std::pair{ Rank, File };
 }
 
 constexpr int Piece::RankFileToSquare(int Rank, int File)
 {
-	const auto [RotatedRank, RotatedFile] = RotateCCW({ Rank, File });
-
-	int Square = RotatedRank * 8 + RotatedFile;
-
-#ifdef _DEBUG
-	const auto [RankTmp, FileTmp] = SquareToRankFile(Square);
-
-	IM_ASSERT(RankTmp == Rank && FileTmp == File); // check unrotated values since we rotate them back in SquareToRankFile
-#endif
+	int Square = Rank * 8 + File;
 
 	return Square;
 }
@@ -89,39 +97,44 @@ constexpr int Piece::RankFileToSquare(std::pair<int, int> RankFile)
 	return RankFileToSquare(Rank, File);
 }
 
-constexpr std::pair<int, int> Piece::RotateCW(std::pair<int, int> RankFile)
+constexpr std::array<char, 3> Piece::RankFileToAlgebraic(int Rank, int File)
 {
-	const auto [Rank, File] = RankFile;
-
-	return { File, 7 - Rank };
-}
-
-constexpr std::pair<int, int> Piece::RotateCCW(std::pair<int, int> RankFile)
-{
-	const auto [Rank, File] = RankFile;
-
-	return { 7 - File, Rank };
-}
-
-inline constexpr std::pair<int, int> Piece::Rotate180(std::pair<int, int> RankFile)
-{
-	const auto [Rank, File] = RankFile;
-
-	return { 7 - File, 7 - Rank };
-}
-
-constexpr std::array<char, 3> Piece::RankFileToAlgebraic(std::pair<int, int> RankFile)
-{
-	const auto [RotatedRank, RotatedFile] = RotateCCW(Rotate180(RankFile));
-
 	return {
-		(char)(RotatedRank + 'a'),
-		(char)(RotatedFile + '1'),
+		(char)(Rank + 'a'),
+		(char)(File + '1'),
 		'\0',
 	};
 }
 
 constexpr std::pair<int, int> Piece::AlgebraicToRankFile(std::array<char, 2> Algebraic)
 {
-	return RotateCCW(Rotate180({ Algebraic[0] - 'a', Algebraic[1] - '1' }));
+	return std::pair{ Algebraic[0] - 'a', Algebraic[1] - '1' };
+}
+
+constexpr std::pair<int, int> Piece::RotateCW(std::pair<int, int> RankFile)
+{
+	const auto [Rank, File] = RankFile;
+
+	return { 7 - File, Rank };
+}
+
+constexpr std::pair<int, int> Piece::RotateCCW(std::pair<int, int> RankFile)
+{
+	const auto [Rank, File] = RankFile;
+
+	return { File, 7 - Rank };
+}
+
+constexpr int Piece::RotateCW(int Square)
+{
+	const auto [Rank, File] = RotateCW(SquareToRankFile(Square));
+
+	return RankFileToSquare(Rank, File);
+}
+
+constexpr int Piece::RotateCCW(int Square)
+{
+	const auto [Rank, File] = RotateCCW(SquareToRankFile(Square));
+
+	return RankFileToSquare(Rank, File);
 }

@@ -10,6 +10,7 @@
 #define COL_ALLOWEDMOVE IM_COL32(0, 0, 0, 50)
 #define COL_MARKED_SQUARE IM_COL32(255, 0, 0, 127)
 #define COL_SELECTED_SQUARE IM_COL32(255, 255, 0, 127)
+#define COL_ENPASSANT_SQUARE IM_COL32(0, 255, 0, 127)
 
 ChessEngine::ChessEngine(const char* FENString)
 	: SelectedPiece(nullptr)
@@ -148,7 +149,7 @@ void ChessEngine::LoadFENPosition(const char* FENString)
 					break;
 				}
 
-				int Square = Piece::RankFileToSquare(Piece::RotateCW({ CurrentRank, CurrentFile++ }));
+				int Square = Piece::RankFileToSquare(CurrentRank, CurrentFile++);
 
 				Pieces.push_back(std::make_unique<Piece>(Square, Type, Color));
 			}
@@ -248,7 +249,7 @@ std::vector<Move> ChessEngine::GetAvailableMoves(Piece* TargetPiece) const
 
 	IterateSquares([&Moves, TargetPiece, this](const ImVec2& Min, const ImVec2& Max, int Rank, int File) -> bool
 		{
-			int Square = Piece::RankFileToSquare({ Rank, File });
+			int Square = Piece::RankFileToSquare(Rank, File);
 
 			if (IsAllowedMove(TargetPiece, Square))
 			{
@@ -274,11 +275,8 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 		return false; // no move happened
 	}
 
-	const auto RotateFunction = MovingPiece->Color == White ? Piece::RotateCCW : Piece::RotateCW;
-	const auto RotateBackFunction = MovingPiece->Color == White ? Piece::RotateCW : Piece::RotateCCW;
-	
-	const auto [OldRank, OldFile] = RotateFunction(Piece::SquareToRankFile(MovingPiece->Square));
-	const auto [NewRank, NewFile] = RotateFunction(Piece::SquareToRankFile(NewSquare));
+	const auto [OldRank, OldFile] = MovingPiece->GetRankFile();
+	const auto [NewRank, NewFile] = MovingPiece->GetRankFile(NewSquare);
 	
 	const int DeltaRank = NewRank - OldRank;
 	const int DeltaFile = NewFile - OldFile;
@@ -324,7 +322,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 			}
 			else if (EnpassantSquare != -1 && DeltaRank > 0) // en passant capture
 			{
-				int EnpassantSquareToTest = Piece::RankFileToSquare(RotateBackFunction({ OldRank, OldFile + DeltaFile }));
+				int EnpassantSquareToTest = MovingPiece->GetSquare(OldRank, OldFile + DeltaFile);
 
 				if (EnpassantSquareToTest == EnpassantSquare)
 				{
@@ -368,7 +366,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 	{
 		bool bRayHitPiece = false;
 
-		auto CheckSquare = [&bIsMoveAllowed, &bRayHitPiece, MovingPiece, this](int RankToCheck, int FileToCheck) -> bool
+		auto CheckSquare = [&bIsMoveAllowed, &bRayHitPiece, MovingPiece, this](int Square) -> bool
 			{
 				if (bRayHitPiece)
 				{
@@ -376,7 +374,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 					return true;
 				}
 
-				if (Piece* SkippedPiece = GetPiece(RankToCheck, FileToCheck))
+				if (Piece* SkippedPiece = GetPiece(Square))
 				{
 					if (SkippedPiece->Color == MovingPiece->Color)
 					{
@@ -403,9 +401,9 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 					break;
 				}
 
-				const auto [RankToCheck, FileToCheck] = RotateBackFunction({ CurrentRank, CurrentFile });
+				int CurrentSquare = MovingPiece->GetSquare(CurrentRank, CurrentFile);
 
-				if (CheckSquare(RankToCheck, FileToCheck))
+				if (CheckSquare(CurrentSquare))
 				{
 					break;
 				}
@@ -424,9 +422,9 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 					break;
 				}
 
-				const auto [RankToCheck, FileToCheck] = RotateBackFunction({ CurrentRank, NewFile });
+				int CurrentSquare = MovingPiece->GetSquare(CurrentRank, NewFile);
 
-				if (CheckSquare(RankToCheck, FileToCheck))
+				if (CheckSquare(CurrentSquare))
 				{
 					break;
 				}
@@ -445,9 +443,9 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 					break;
 				}
 
-				const auto [RankToCheck, FileToCheck] = RotateBackFunction({ NewRank, CurrentFile });
+				int CurrentSquare = MovingPiece->GetSquare(NewRank, CurrentFile);
 
-				if (CheckSquare(RankToCheck, FileToCheck))
+				if (CheckSquare(CurrentSquare))
 				{
 					break;
 				}
@@ -463,21 +461,21 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 			if (NewFile + DeltaFileDir >= 0 && NewFile + DeltaFileDir <= 7 &&
 				OldFile + DeltaFileDir >= 0 && OldFile + DeltaFileDir <= 7)
 			{
-				int CastlingRookSquare = Piece::RankFileToSquare(RotateBackFunction({ OldRank, NewFile + DeltaFileDir }));
+				int CastlingRookSquare = MovingPiece->GetSquare(OldRank, NewFile + DeltaFileDir);
 				Piece* CastlingRook = GetPiece(CastlingRookSquare);
 
 				if (!CastlingRook)
 				{
 					if (NewFile + 2 * DeltaFileDir >= 0 && NewFile + 2 * DeltaFileDir <= 7)
 					{
-						CastlingRookSquare = Piece::RankFileToSquare(RotateBackFunction({ OldRank, NewFile + 2 * DeltaFileDir }));
+						CastlingRookSquare = MovingPiece->GetSquare(OldRank, NewFile + 2 * DeltaFileDir);
 						CastlingRook = GetPiece(CastlingRookSquare);
 					}
 				}
 
 				if (CastlingRook && CastlingRook->Type == Rook && CastlingRook->Color == MovingPiece->Color)
 				{
-					int SquareBetween = Piece::RankFileToSquare(RotateBackFunction({ OldRank, OldFile + DeltaFileDir }));
+					int SquareBetween = MovingPiece->GetSquare(OldRank, OldFile + DeltaFileDir);
 					Piece* PieceBetween = GetPiece(SquareBetween);
 
 					if (!bHasPiece && !PieceBetween)
@@ -504,7 +502,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 						}
 						else if (QueenSideCastle.IsValid() && NewSquare == QueenSideCastle.NewSquare)
 						{
-							int SecondSquareBetween = Piece::RankFileToSquare(RotateBackFunction({ OldRank, NewFile + DeltaFileDir }));
+							int SecondSquareBetween = MovingPiece->GetSquare(OldRank, NewFile + DeltaFileDir);
 							Piece* SecondPieceBetween = GetPiece(SecondSquareBetween);
 
 							if (!SecondPieceBetween)
@@ -553,30 +551,29 @@ bool ChessEngine::IsInCheck(PieceColor Color) const
 
 	IM_ASSERT(King);
 
-	const auto RotateFunction = Color == White ? Piece::RotateCCW : Piece::RotateCW;
-
-	const auto [Rank, File] = RotateFunction(Piece::SquareToRankFile(King->Square));
+	const auto [Rank, File] = King->GetRankFile();
 
 	// check ranks first
 	
-	auto CheckRanks = [Color, RotateFunction, Rank, File, this](int Dir) -> bool
+	auto CheckRanks = [Color, King, Rank, File, this](int Dir) -> bool
 	{
 		for (int i = 0; i < 7; i++)
 		{
 			int CurrentRank = Rank + i * Dir;
+			int CurrentFile = File;
 
 			if (CurrentRank < 0 || CurrentRank > 7)
 			{
 				break;
 			}
 
-			const auto [RotatedCurrentRank, RotatedCurrentFile] = RotateFunction({ CurrentRank, File });
+			int CurrentSquare = King->GetSquare(CurrentRank, CurrentFile);
 
-			Piece* HitPiece = GetPiece(RotatedCurrentRank, RotatedCurrentFile);
+			Piece* HitPiece = GetPiece(CurrentSquare);
 
 			if (HitPiece)
 			{
-				printf("%d hit piece type %d color %d at %d,%d\n", Color, HitPiece->Type, HitPiece->Color, RotatedCurrentRank, RotatedCurrentFile);
+				printf("%d hit piece type %d color %d at %d,%d\n", Color, HitPiece->Type, HitPiece->Color, CurrentRank, CurrentFile);
 
 				if (HitPiece->Color == Color) // same color
 				{
@@ -618,8 +615,10 @@ void ChessEngine::RemoveCastlingRights(int MovedSquare, PieceColor Color)
 		return;
 	}
 
-	const auto [OldRank, OldFile] = Piece::RotateCCW(Piece::SquareToRankFile(MovedSquare));
-	const auto [DefaultKingRank, DefaultKingFile] = Piece::RotateCCW(Piece::SquareToRankFile(DefaultKingSquare));
+	// TODO
+
+	const auto [OldRank, OldFile] = Piece::SquareToRankFile(MovedSquare);
+	const auto [DefaultKingRank, DefaultKingFile] = Piece::SquareToRankFile(DefaultKingSquare);
 
 	if (OldFile - DefaultKingFile > 0) // king side
 	{
@@ -704,7 +703,7 @@ void ChessEngine::SnapSelectedPiece(const ImVec2& Pos)
 		return;
 	}
 
-	int NewSquare = GetSquare(Pos);
+	int NewSquare = Piece::RotateCW(GetSquare(Pos));
 
 	if (NewSquare < 0 || NewSquare > 63)
 	{
@@ -739,7 +738,7 @@ void ChessEngine::SelectPiece(const ImVec2& Pos)
 			if (Pos.x >= Min.x && Pos.x <= Max.x &&
 				Pos.y >= Min.y && Pos.y <= Max.y)
 			{
-				if (SelectedPiece = GetPiece(Rank, File))
+				if (SelectedPiece = GetPiece(Piece::RankFileToSquare(Piece::RotateCW({ Rank, File }))))
 				{
 					SelectedPieceMouseOffset = Pos - Min;
 				}
@@ -939,7 +938,7 @@ void ChessEngine::DrawPiece(int Square, PieceType Type, PieceColor Color, bool b
 	const ImVec2 Center = Size / 2.f;
 	const ImVec2 SquareSize = GetSquareSize();
 
-	const auto [Rank, File] = Piece::SquareToRankFile(Square);
+	const auto [Rank, File] = Piece::RotateCCW(Piece::SquareToRankFile(Square));
 
 	ImVec2 x = Center + (Rank - 4) * SquareSize;
 	ImVec2 y = Center + (File - 4) * SquareSize;
@@ -964,7 +963,7 @@ void ChessEngine::DrawMarkedSquares() const
 
 			ImU32 Color = COL_MARKED_SQUARE;
 
-			int Square = Piece::RankFileToSquare(Rank, File);
+			int Square = Piece::RankFileToSquare(Piece::RotateCCW({ Rank, File }));
 
 			if (std::find(MarkedSquares.begin(), MarkedSquares.end(), Square) != MarkedSquares.end())
 			{
@@ -1002,7 +1001,7 @@ void ChessEngine::DrawGrid() const
 
 #ifdef _DEBUG
 			ImGui::SetCursorScreenPos(Min);
-			ImGui::TextColored(ImVec4(0.f, 0.f, 0.f, 1.f), Piece::RankFileToAlgebraic({ Rank, File }).data());
+			ImGui::TextColored(ImVec4(0.f, 0.f, 0.f, 1.f), Piece::RankFileToAlgebraic(Rank, File).data());
 #endif
 
 			return true;
@@ -1032,7 +1031,7 @@ void ChessEngine::DrawSelectedPiece() const
 
 	if (SelectedPiece->Square != LastMove.OldSquare && SelectedPiece->Square != LastMove.NewSquare)
 	{
-		const auto [Min, Max] = GetSquare(Piece::SquareToRankFile(SelectedPiece->Square));
+		const auto [Min, Max] = GetSquare(Piece::RotateCCW(Piece::SquareToRankFile(SelectedPiece->Square)));
 
 		DrawList->AddRectFilled(Min, Max, COL_SELECTED_SQUARE);
 	}
@@ -1040,9 +1039,10 @@ void ChessEngine::DrawSelectedPiece() const
 
 void ChessEngine::DrawMoveInfo() const
 {
+	ImDrawList* DrawList = ImGui::GetWindowDrawList();
+
 	// CurrentMove
 
-	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 	int CurrentMoveRank = -2;
 	int CurrentMoveFile = 0;
 
@@ -1053,15 +1053,27 @@ void ChessEngine::DrawMoveInfo() const
 	DrawList->AddRectFilled(CurrentMoveSquareMin - PADDING, CurrentMoveSquareMax + PADDING, COL_BG);
 	DrawList->AddRectFilled(CurrentMoveSquareMin, CurrentMoveSquareMax, CurrentColor);
 
+	// CastlingRights
+
+	constexpr bool bDrawCastlingRights = false;
+
+	if constexpr (bDrawCastlingRights)
+	{
+		MarkedSquares.push_back(CastlingRights.KingSide[0].NewSquare);
+		MarkedSquares.push_back(CastlingRights.KingSide[1].NewSquare);
+		MarkedSquares.push_back(CastlingRights.QueenSide[0].NewSquare);
+		MarkedSquares.push_back(CastlingRights.QueenSide[1].NewSquare);
+	}
+
 	// EnpassantSquare
 
 	constexpr bool bDrawEnpassantSquare = false;
 
 	if (bDrawEnpassantSquare && EnpassantSquare != -1)
 	{
-		const auto [EnpassantSquareMin, EnpassantSquareMax] = GetSquare(Piece::SquareToRankFile(EnpassantSquare));
+		const auto [EnpassantSquareMin, EnpassantSquareMax] = GetSquare(Piece::RotateCCW(Piece::SquareToRankFile(EnpassantSquare)));
 
-		DrawList->AddRectFilled(EnpassantSquareMin, EnpassantSquareMax, IM_COL32(0, 255, 0, 127));
+		DrawList->AddRectFilled(EnpassantSquareMin, EnpassantSquareMax, COL_ENPASSANT_SQUARE);
 	}
 
 	// HalfMoveClock
@@ -1078,8 +1090,8 @@ void ChessEngine::DrawMoveInfo() const
 
 	if (LastMove.IsValid())
 	{
-		const auto [LastMoveOldSquareMin, LastMoveOldSquareMax] = GetSquare(Piece::SquareToRankFile(LastMove.OldSquare));
-		const auto [LastMoveNewSquareMin, LastMoveNewSquareMax] = GetSquare(Piece::SquareToRankFile(LastMove.NewSquare));
+		const auto [LastMoveOldSquareMin, LastMoveOldSquareMax] = GetSquare(Piece::RotateCCW(Piece::SquareToRankFile(LastMove.OldSquare)));
+		const auto [LastMoveNewSquareMin, LastMoveNewSquareMax] = GetSquare(Piece::RotateCCW(Piece::SquareToRankFile(LastMove.NewSquare)));
 
 		DrawList->AddRectFilled(LastMoveOldSquareMin, LastMoveOldSquareMax, COL_SELECTED_SQUARE);
 		DrawList->AddRectFilled(LastMoveNewSquareMin, LastMoveNewSquareMax, COL_SELECTED_SQUARE);
@@ -1097,7 +1109,7 @@ void ChessEngine::DrawAllowedMoves() const
 
 	IterateSquares([this, DrawList](const ImVec2& Min, const ImVec2& Max, int Rank, int File) -> bool
 		{
-			int Square = Piece::RankFileToSquare({ Rank, File });
+			int Square = Piece::RankFileToSquare(Piece::RotateCW({ Rank, File }));
 
 			decltype(Pieces)::const_iterator OutCaputedPiece = Pieces.end();
 
