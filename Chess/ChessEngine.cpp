@@ -581,7 +581,9 @@ bool ChessEngine::IsInCheck(PieceColor Color) const
 				}
 				else if (HitPiece->Type == Rook || HitPiece->Type == Queen)
 				{
+#ifdef _DEBUG
 					MarkedSquares.push_back(HitPiece->Square);
+#endif
 
 					return true;
 				}
@@ -1019,11 +1021,9 @@ void ChessEngine::DrawSelectedPiece() const
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
 	{
-		const ImVec2 MousePos = ImGui::GetMousePos();
-
-		DrawList->ChannelsSplit(2);
 		DrawList->ChannelsSetCurrent(1);
 
+		const ImVec2 MousePos = ImGui::GetMousePos();
 		DrawPiece(MousePos - SelectedPieceMouseOffset, GetSquareSize(), SelectedPiece->Type, SelectedPiece->Color, false);
 
 		DrawList->ChannelsSetCurrent(0);
@@ -1059,10 +1059,12 @@ void ChessEngine::DrawMoveInfo() const
 
 	if constexpr (bDrawCastlingRights)
 	{
+#ifdef _DEBUG
 		MarkedSquares.push_back(CastlingRights.KingSide[0].NewSquare);
 		MarkedSquares.push_back(CastlingRights.KingSide[1].NewSquare);
 		MarkedSquares.push_back(CastlingRights.QueenSide[0].NewSquare);
 		MarkedSquares.push_back(CastlingRights.QueenSide[1].NewSquare);
+#endif
 	}
 
 	// EnpassantSquare
@@ -1176,6 +1178,11 @@ void ChessEngine::Update()
 
 void ChessEngine::Draw() const
 {
+	ImDrawList* DrawList = ImGui::GetWindowDrawList();
+
+	DrawList->ChannelsSplit(2);
+	DrawList->ChannelsSetCurrent(0);
+
 #ifdef _DEBUG
 	MarkedSquares.clear();
 #endif
@@ -1187,6 +1194,7 @@ void ChessEngine::Draw() const
 	DrawPieces();
 	DrawCapturedPieces();
 
+#ifdef _DEBUG
 	Piece* WhiteKing = GetFirstPiece(PieceType::King, White);
 	Piece* BlackKing = GetFirstPiece(PieceType::King, Black);
 
@@ -1200,11 +1208,8 @@ void ChessEngine::Draw() const
 		MarkedSquares.push_back(BlackKing->Square);
 	}
 
-#ifdef _DEBUG
 	DrawMarkedSquares();
 #endif
-
-	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 
 	DrawList->ChannelsMerge();
 }
