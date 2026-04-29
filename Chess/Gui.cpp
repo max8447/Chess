@@ -101,7 +101,7 @@ void Gui::InitializeGui()
 	ImGui_ImplGlfw_InitForOpenGL(GLFWWindow, true);          // Second param install_callback=true will install GLFW callbacks and chain to existing ones.
 	ImGui_ImplOpenGL3_Init();
 
-	ChessEngine = std::make_unique<::ChessEngine>();
+	ChessEngine = std::make_unique<::ChessEngine>("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }
 
 void Gui::ShutdownGui()

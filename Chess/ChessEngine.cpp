@@ -11,7 +11,7 @@
 #define COL_MARKED_SQUARE IM_COL32(255, 0, 0, 127)
 #define COL_SELECTED_SQUARE IM_COL32(255, 255, 0, 127)
 
-ChessEngine::ChessEngine()
+ChessEngine::ChessEngine(const char* FENString)
 	: SelectedPiece(nullptr)
 {
 	int ImageWidth = 0;
@@ -26,6 +26,7 @@ ChessEngine::ChessEngine()
 
 	IM_ASSERT(bSuccess && "Failed to load pieces texture!");
 
+	LoadFENPosition(FENString);
 	// LoadFENPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	// LoadFENPosition("r1bqkbnr/pppp1ppp/2n5/4p3/1b1PP3/2N2N2/PPP2PPP/R1BQK2R w KQkq - 2 4");
 	// LoadFENPosition("qqqqqqqq/qqqqqqqq/8/8/8/8/QQQQQQQQ/QQQQQQQQ w KQkq - 0 1");
@@ -546,9 +547,9 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 bool ChessEngine::IsInCheck(PieceColor Color) const
 {
 	// TODO: unfinished
-	INT3;
+	// INT3;
 
-	Piece* King = GetPiece(PieceType::King, Color);
+	Piece* King = GetFirstPiece(PieceType::King, Color);
 
 	IM_ASSERT(King);
 
@@ -557,27 +558,51 @@ bool ChessEngine::IsInCheck(PieceColor Color) const
 	const auto [Rank, File] = RotateFunction(Piece::SquareToRankFile(King->Square));
 
 	// check ranks first
-
-	for (int CurrentRank = Rank; CurrentRank < 7; CurrentRank++)
+	
+	auto CheckRanks = [Color, RotateFunction, Rank, File, this](int Dir) -> bool
 	{
-		if (CurrentRank < 0 || CurrentRank > 7)
+		for (int i = 0; i < 7; i++)
 		{
-			break;
-		}
+			int CurrentRank = Rank + i * Dir;
 
-		const auto [RotatedCurrentRank, RotatedCurrentFile] = RotateFunction({ CurrentRank, File });
-
-		Piece* HitPiece = GetPiece(RotatedCurrentRank, RotatedCurrentFile);
-
-		if (HitPiece)
-		{
-			int AllowedDistance = Piece::GetAvailableMoves(HitPiece->Type)[1];
-
-			if (AllowedDistance > 0 && AllowedDistance >= CurrentRank - Rank)
+			if (CurrentRank < 0 || CurrentRank > 7)
 			{
-				return true;
+				break;
+			}
+
+			const auto [RotatedCurrentRank, RotatedCurrentFile] = RotateFunction({ CurrentRank, File });
+
+			Piece* HitPiece = GetPiece(RotatedCurrentRank, RotatedCurrentFile);
+
+			if (HitPiece)
+			{
+				printf("%d hit piece type %d color %d at %d,%d\n", Color, HitPiece->Type, HitPiece->Color, RotatedCurrentRank, RotatedCurrentFile);
+
+				if (HitPiece->Color == Color) // same color
+				{
+					return false;
+				}
+				else if (HitPiece->Type == Rook || HitPiece->Type == Queen)
+				{
+					MarkedSquares.push_back(HitPiece->Square);
+
+					return true;
+				}
 			}
 		}
+
+		return false;
+	};
+
+	if (CheckRanks(1))
+	{
+		printf("in check positive ranks\n");
+		return true;
+	}
+	else if (CheckRanks(-1))
+	{
+		printf("in check negative ranks\n");
+		return true;
 	}
 
 	return false;
@@ -585,8 +610,16 @@ bool ChessEngine::IsInCheck(PieceColor Color) const
 
 void ChessEngine::RemoveCastlingRights(int MovedSquare, PieceColor Color)
 {
+	int DefaultKingSquare = CastlingRights.KingSide[Color].OldSquare;
+
+	if (MovedSquare < 0 || MovedSquare > 63 ||
+		DefaultKingSquare < 0 || DefaultKingSquare > 63)
+	{
+		return;
+	}
+
 	const auto [OldRank, OldFile] = Piece::RotateCCW(Piece::SquareToRankFile(MovedSquare));
-	const auto [DefaultKingRank, DefaultKingFile] = Piece::RotateCCW(Piece::SquareToRankFile(CastlingRights.KingSide[Color].OldSquare));
+	const auto [DefaultKingRank, DefaultKingFile] = Piece::RotateCCW(Piece::SquareToRankFile(DefaultKingSquare));
 
 	if (OldFile - DefaultKingFile > 0) // king side
 	{
@@ -791,7 +824,7 @@ Piece* ChessEngine::GetPiece(int Square) const
 	return nullptr;
 }
 
-Piece* ChessEngine::GetPiece(PieceType Type, PieceColor Color) const
+Piece* ChessEngine::GetFirstPiece(PieceType Type, PieceColor Color) const
 {
 	for (const auto& Piece : Pieces)
 	{
@@ -1141,6 +1174,19 @@ void ChessEngine::Draw() const
 	DrawAllowedMoves();
 	DrawPieces();
 	DrawCapturedPieces();
+
+	Piece* WhiteKing = GetFirstPiece(PieceType::King, White);
+	Piece* BlackKing = GetFirstPiece(PieceType::King, Black);
+
+	if (IsInCheck(White))
+	{
+		MarkedSquares.push_back(WhiteKing->Square);
+	}
+
+	if (IsInCheck(Black))
+	{
+		MarkedSquares.push_back(BlackKing->Square);
+	}
 
 #ifdef _DEBUG
 	DrawMarkedSquares();

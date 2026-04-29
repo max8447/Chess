@@ -80,7 +80,7 @@ private:
 
 public:
 
-	ChessEngine();
+	ChessEngine(const char* FENString);
 
 	// expects valid FEN string (no validity checking done)
 	void LoadFENPosition(const char* FENString);
@@ -117,7 +117,8 @@ private:
 
 	Piece* GetPiece(int Rank, int File) const;
 	Piece* GetPiece(int Square) const;
-	Piece* GetPiece(PieceType Type, PieceColor Color) const;
+
+	Piece* GetFirstPiece(PieceType Type, PieceColor Color) const;
 
 	int GetSquare(const ImVec2& Pos) const;
 
