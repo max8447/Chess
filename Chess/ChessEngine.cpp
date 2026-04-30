@@ -520,53 +520,56 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 		}
 	}
 
-	if (!bAllowEnpassant && bIsMoveAllowed)
+	if (bIsMoveAllowed)
 	{
-		if (OutEnpassantSquare)
+		if (!bAllowEnpassant)
 		{
-			*OutEnpassantSquare = -1;
-		}
-	}
-
-	if (!bAllowPseudolegal && bIsMoveAllowed)
-	{
-		// don't allow the move if it leaves us in check after
-		// we don't need to (temporarily) remove any potentially captured pieces since we ignore same-colored pieces in IsInCheck
-
-		// a castling king may not pass through a piece that is under attack while
-
-		if (OutCastledRookMove && OutCastledRookMove->IsAllowed())
-		{
-			int CurrentCastledRookSquare = OutCastledRookMove->OldSquare;
-			int NewCastledRookSquare = OutCastledRookMove->NewSquare;
-
-			Piece* CastledRook = GetPiece(CurrentCastledRookSquare);
-
-			if (CastledRook)
+			if (OutEnpassantSquare)
 			{
-				CastledRook->Square = NewCastledRookSquare;
+				*OutEnpassantSquare = -1;
+			}
+		}
 
-				if (IsAttacked(CastledRook))
+		if (!bAllowPseudolegal)
+		{
+			// don't allow the move if it leaves us in check after
+			// we don't need to (temporarily) remove any potentially captured pieces since we ignore same-colored pieces in IsInCheck
+
+			// a castling king may not pass through a piece that is under attack while
+
+			if (OutCastledRookMove && OutCastledRookMove->IsAllowed())
+			{
+				int CurrentCastledRookSquare = OutCastledRookMove->OldSquare;
+				int NewCastledRookSquare = OutCastledRookMove->NewSquare;
+
+				Piece* CastledRook = GetPiece(CurrentCastledRookSquare);
+
+				if (CastledRook)
+				{
+					CastledRook->Square = NewCastledRookSquare;
+
+					if (IsAttacked(CastledRook))
+					{
+						bIsMoveAllowed = false;
+					}
+
+					CastledRook->Square = CurrentCastledRookSquare;
+				}
+			}
+
+			if (bIsMoveAllowed)
+			{
+				int CurrentSquare = MovingPiece->Square;
+
+				MovingPiece->Square = NewSquare;
+
+				if (IsInCheck(MovingPiece->Color))
 				{
 					bIsMoveAllowed = false;
 				}
 
-				CastledRook->Square = CurrentCastledRookSquare;
+				MovingPiece->Square = CurrentSquare;
 			}
-		}
-
-		if (bIsMoveAllowed)
-		{
-			int CurrentSquare = MovingPiece->Square;
-
-			MovingPiece->Square = NewSquare;
-
-			if (IsInCheck(MovingPiece->Color))
-			{
-				bIsMoveAllowed = false;
-			}
-
-			MovingPiece->Square = CurrentSquare;
 		}
 	}
 
