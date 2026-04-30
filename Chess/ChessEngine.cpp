@@ -28,11 +28,6 @@ ChessEngine::ChessEngine(const char* FENString)
 	IM_ASSERT(bSuccess && "Failed to load pieces texture!");
 
 	LoadFENPosition(FENString);
-	// LoadFENPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-	// LoadFENPosition("r1bqkbnr/pppp1ppp/2n5/4p3/1b1PP3/2N2N2/PPP2PPP/R1BQK2R w KQkq - 2 4");
-	// LoadFENPosition("qqqqqqqq/qqqqqqqq/8/8/8/8/QQQQQQQQ/QQQQQQQQ w KQkq - 0 1");
-	// LoadFENPosition("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
-	// LoadFENPosition(NULL);
 }
 
 void ChessEngine::LoadFENPosition(const char* FENString)
@@ -544,64 +539,155 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, decltype(Piec
 
 bool ChessEngine::IsInCheck(PieceColor Color) const
 {
-	// TODO: unfinished
-	// INT3;
-
 	Piece* King = GetFirstPiece(PieceType::King, Color);
 
-	IM_ASSERT(King);
-
-	const auto [Rank, File] = King->GetRankFile();
-
-	// check ranks first
-	
-	auto CheckRanks = [Color, King, Rank, File, this](int Dir) -> bool
+	if (!King)
 	{
-		for (int i = 0; i < 7; i++)
-		{
-			int CurrentRank = Rank + i * Dir;
-			int CurrentFile = File;
+		return false;
+	}
 
-			if (CurrentRank < 0 || CurrentRank > 7)
+	return IsAttacked(King);
+}
+
+bool ChessEngine::IsAttacked(Piece* AttackedPiece) const
+{
+	IM_ASSERT(AttackedPiece);
+
+	const auto [Rank, File] = AttackedPiece->GetRankFile();
+
+	enum CheckType
+	{
+		Ranks,
+		Files,
+		DiagonalsPos,
+		DiagonalsNeg
+	};
+
+	auto DoCheck = [AttackedPiece, Rank, File, this](CheckType CheckType, int Dir) -> bool
+		{
+			for (int i = 1; i < 8; i++)
 			{
-				break;
+				const int CurrentRank = Rank + (i * Dir * (CheckType == DiagonalsNeg ? -1 : 1)	* (CheckType != Files));
+				const int CurrentFile = File + (i * Dir											* (CheckType != Ranks));
+
+				if (CurrentRank < 0 || CurrentRank > 7 ||
+					CurrentFile < 0 || CurrentFile > 7)
+				{
+					break;
+				}
+
+				const int CurrentSquare = AttackedPiece->GetSquare(CurrentRank, CurrentFile);
+
+				Piece* HitPiece = GetPiece(CurrentSquare);
+
+				if (HitPiece)
+				{
+					if (HitPiece->Color == AttackedPiece->Color)
+					{
+						return false;
+					}
+					else
+					{
+						const int DeltaRank = CurrentRank - Rank;
+						const int DeltaFile = CurrentFile - File;
+
+						const int AbsDeltaRank = abs(CurrentRank - Rank);
+						const int AbsDeltaFile = abs(CurrentFile - File);
+
+						const int Distance = max(AbsDeltaRank, AbsDeltaFile);
+
+						bool bIsPieceAttacking = false;
+
+						switch (HitPiece->Type)
+						{
+						case King:
+							bIsPieceAttacking = Distance == 1;
+							break;
+						case Queen:
+							bIsPieceAttacking = true;
+							break;
+						case Bishop:
+							bIsPieceAttacking = CheckType == DiagonalsPos || CheckType == DiagonalsNeg;
+							break;
+						case Knight:
+							bIsPieceAttacking = false; // we don't check for knight attacks in this function
+							break;
+						case Rook:
+							bIsPieceAttacking = CheckType == Ranks || CheckType == Files;
+							break;
+						case Pawn:
+							bIsPieceAttacking = DeltaRank == 1 && AbsDeltaFile == 1 && Distance == 1 && (CheckType == DiagonalsPos || CheckType == DiagonalsNeg);
+							break;
+						default:
+							break;
+						}
+
+						if (bIsPieceAttacking)
+						{
+#ifdef _DEBUG
+							MarkedSquares.push_back(HitPiece->Square);
+#endif
+
+							return true;
+						}
+						else
+						{
+							return false;
+						}
+					}
+				}
 			}
 
-			int CurrentSquare = King->GetSquare(CurrentRank, CurrentFile);
+			return false;
+		};
+
+	for (int i = 0; i < 2; i++)
+	{
+		const int Dir = i == 0 ? 1 : -1;
+
+		if (DoCheck(Ranks, Dir) ||
+			DoCheck(Files, Dir) ||
+			DoCheck(DiagonalsPos, Dir) ||
+			DoCheck(DiagonalsNeg, Dir))
+		{
+			return true;
+		}
+	}
+
+	// knight-attack implementation
+
+	for (int i = 0; i < 2; i++)
+	{
+		int AbsDeltaRank = (i == 0) + 1;
+		int AbsDeltaFile = (i == 1) + 1;
+
+		for (int j = 0; j < 4; j++)
+		{
+			int RankDir = (j & 1) ? 1 : -1;
+			int FileDir = (j & 2) ? 1 : -1;
+
+			const int DeltaRank = RankDir * AbsDeltaRank;
+			const int DeltaFile = FileDir * AbsDeltaFile;
+
+			const int CurrentRank = Rank + DeltaRank;
+			const int CurrentFile = File + DeltaFile;
+
+			const int CurrentSquare = AttackedPiece->GetSquare(CurrentRank, CurrentFile);
 
 			Piece* HitPiece = GetPiece(CurrentSquare);
 
 			if (HitPiece)
 			{
-				printf("%d hit piece type %d color %d at %d,%d\n", Color, HitPiece->Type, HitPiece->Color, CurrentRank, CurrentFile);
-
-				if (HitPiece->Color == Color) // same color
-				{
-					return false;
-				}
-				else if (HitPiece->Type == Rook || HitPiece->Type == Queen)
+				if (HitPiece->Color != AttackedPiece->Color && HitPiece->Type == Knight)
 				{
 #ifdef _DEBUG
-					MarkedSquares.push_back(HitPiece->Square);
+					MarkedSquares.push_back(CurrentSquare);
 #endif
 
 					return true;
 				}
 			}
 		}
-
-		return false;
-	};
-
-	if (CheckRanks(1))
-	{
-		printf("in check positive ranks\n");
-		return true;
-	}
-	else if (CheckRanks(-1))
-	{
-		printf("in check negative ranks\n");
-		return true;
 	}
 
 	return false;
@@ -965,12 +1051,12 @@ void ChessEngine::DrawMarkedSquares() const
 
 			ImU32 Color = COL_MARKED_SQUARE;
 
-			int Square = Piece::RankFileToSquare(Piece::RotateCCW({ Rank, File }));
+			int Square = Piece::RankFileToSquare(Piece::RotateCW({ Rank, File }));
 
 			if (std::find(MarkedSquares.begin(), MarkedSquares.end(), Square) != MarkedSquares.end())
 			{
 				DrawList->AddRectFilled(Min, Max, Color);
-			}
+			}		
 
 			return true;
 		});
@@ -1200,11 +1286,13 @@ void ChessEngine::Draw() const
 
 	if (IsInCheck(White))
 	{
+		printf("White in check\n");
 		MarkedSquares.push_back(WhiteKing->Square);
 	}
 
 	if (IsInCheck(Black))
 	{
+		printf("Black in check\n");
 		MarkedSquares.push_back(BlackKing->Square);
 	}
 

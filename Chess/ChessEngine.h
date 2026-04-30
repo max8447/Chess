@@ -102,6 +102,7 @@ private:
 	) const;
 	
 	bool IsInCheck(PieceColor Color) const;
+	bool IsAttacked(Piece* AttackedPiece) const;
 
 	void RemoveCastlingRights(int MovedSquare, PieceColor Color);
 	void FinishMove(Piece* MovingPiece);

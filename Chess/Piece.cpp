@@ -16,7 +16,7 @@ std::pair<int, int> Piece::GetRankFile(int Square) const
 
 	if (Color == Black)
 	{
-		return { 7 - Rank, 7 - File };
+		return { 7 - Rank, 7 - File }; // rotate by 180 degrees
 	}
 	else
 	{
@@ -28,12 +28,16 @@ int Piece::GetSquare(int Rank, int File) const
 {
 	if (Rank == -1 || File == -1)
 	{
-		Rank = SquareToRankFile(Square).first;
-		File = SquareToRankFile(Square).second;
+		const auto [OwnRank, OwnFile] = SquareToRankFile(Square);
+
+		Rank = OwnRank;
+		File = OwnFile;
 	}
 
 	if (Color == Black)
 	{
+		// rotate by 180 degrees
+
 		Rank = 7 - Rank;
 		File = 7 - File;
 	}
