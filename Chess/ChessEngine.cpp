@@ -250,7 +250,11 @@ std::vector<Move> ChessEngine::GetAvailableMoves(Piece* TargetPiece) const
 		{
 			int Square = TargetPiece->GetSquare(Rank, File);
 
-			if (IsAllowedMove(TargetPiece, Square, bAllowPseudolegalMoves))
+			decltype(Pieces)::const_iterator OutCaputedPiece = Pieces.end();
+			int OutEnpassantSquare = -1;
+			Move OutCastledRookMove;
+
+			if (IsAllowedMove(TargetPiece, Square, bAllowPseudolegalMoves, &OutCaputedPiece, &OutEnpassantSquare, &OutCastledRookMove))
 			{
 				Moves.push_back(Move{ TargetPiece->Square, Square });
 			}
@@ -524,21 +528,46 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 		}
 	}
 
-	if (!bAllowPseudolegal)
+	if (!bAllowPseudolegal && bIsMoveAllowed)
 	{
 		// don't allow the move if it leaves us in check after
 		// we don't need to (temporarily) remove any potentially captured pieces since we ignore same-colored pieces in IsInCheck
 
-		int CurrentSquare = MovingPiece->Square;
+		// a castling king may not pass through a piece that is under attack while
 
-		MovingPiece->Square = NewSquare;
-
-		if (IsInCheck(MovingPiece->Color))
+		if (OutCastledRookMove && OutCastledRookMove->IsAllowed())
 		{
-			bIsMoveAllowed = false;
+			int CurrentCastledRookSquare = OutCastledRookMove->OldSquare;
+			int NewCastledRookSquare = OutCastledRookMove->NewSquare;
+
+			Piece* CastledRook = GetPiece(CurrentCastledRookSquare);
+
+			if (CastledRook)
+			{
+				CastledRook->Square = NewCastledRookSquare;
+
+				if (IsAttacked(CastledRook))
+				{
+					bIsMoveAllowed = false;
+				}
+
+				CastledRook->Square = CurrentCastledRookSquare;
+			}
 		}
 
-		MovingPiece->Square = CurrentSquare;
+		if (bIsMoveAllowed)
+		{
+			int CurrentSquare = MovingPiece->Square;
+
+			MovingPiece->Square = NewSquare;
+
+			if (IsInCheck(MovingPiece->Color))
+			{
+				bIsMoveAllowed = false;
+			}
+
+			MovingPiece->Square = CurrentSquare;
+		}
 	}
 
 	if (!bIsMoveAllowed)
@@ -1249,8 +1278,10 @@ void ChessEngine::DrawAllowedMoves() const
 			int Square = Piece::RankFileToSquare(Piece::RotateCW({ Rank, File }));
 
 			decltype(Pieces)::const_iterator OutCaputedPiece = Pieces.end();
+			int OutEnpassantSquare = -1;
+			Move OutCastledRookMove;
 
-			if (IsAllowedMove(SelectedPiece, Square, bAllowPseudolegalMoves, &OutCaputedPiece))
+			if (IsAllowedMove(SelectedPiece, Square, bAllowPseudolegalMoves, &OutCaputedPiece, &OutEnpassantSquare, &OutCastledRookMove))
 			{
 				float Diameter = (Max - Min).x;
 
