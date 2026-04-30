@@ -26,19 +26,23 @@ struct Move
 		NewSquare = Piece::RankFileToSquare(Piece::AlgebraicToRankFile(NewSquareArray));
 	}
 
-	const bool IsValid() const
+	const bool IsValid() const // invalid moves (squares are -1)
 	{
 		return OldSquare != -1 && NewSquare != -1;
 	}
 
-	const bool IsZero() const
+	const bool IsZero() const // old square and new square are the same
 	{
 		return OldSquare == NewSquare;
 	}
-
-	void Invalidate()
+	
+	const bool IsAllowed() const // is valid AND is NOT zero
 	{
-		OldSquare = -1;
+		return IsValid() && !IsZero();
+	}
+
+	void Invalidate() // set *only* newsquare to -1
+	{
 		NewSquare = -1;
 	}
 };
@@ -96,6 +100,7 @@ private:
 	bool IsAllowedMove(
 		Piece* MovingPiece,
 		int NewSquare,
+		bool bAllowPseudolegal,
 		decltype(Pieces)::const_iterator* OutCapturedPiece = nullptr,
 		int* OutEnpassantSquare = nullptr,
 		Move* OutCastledRookMove = nullptr
@@ -104,7 +109,7 @@ private:
 	bool IsInCheck(PieceColor Color) const;
 	bool IsAttacked(Piece* AttackedPiece) const;
 
-	void RemoveCastlingRights(int MovedSquare, PieceColor Color);
+	void RemoveCastlingRights(Piece* MovedPiece);
 	void FinishMove(Piece* MovingPiece);
 	void TryMoveTo(Piece* MovingPiece, int NewSquare);
 

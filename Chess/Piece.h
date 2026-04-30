@@ -65,7 +65,7 @@ struct Piece
 	static constexpr int RankFileToSquare(int Rank, int File);
 	static constexpr int RankFileToSquare(std::pair<int, int> RankFile);
 
-	static constexpr std::array<char, 3> RankFileToAlgebraic(int Rank, int File);
+	static constexpr std::array<char, 3> RankFileToAlgebraic(std::pair<int, int> RankFile);
 	static constexpr std::pair<int, int> AlgebraicToRankFile(std::array<char, 2> Algebraic); // no safety guaranteed
 
 	static constexpr std::pair<int, int> RotateCW(std::pair<int, int> RankFile);	// only use in graphic contexts
@@ -97,8 +97,10 @@ constexpr int Piece::RankFileToSquare(std::pair<int, int> RankFile)
 	return RankFileToSquare(Rank, File);
 }
 
-constexpr std::array<char, 3> Piece::RankFileToAlgebraic(int Rank, int File)
+constexpr std::array<char, 3> Piece::RankFileToAlgebraic(std::pair<int, int> RankFile)
 {
+	const auto [Rank, File] = RankFile;
+
 	return {
 		(char)(Rank + 'a'),
 		(char)(File + '1'),

@@ -28,4 +28,7 @@
 #include <chrono>
 
 #define INT3 __debugbreak()
+#define ASSERT(cond, ...) IM_ASSERT(cond)
+#else
+#define ASSERT(cond, returnvalue) if (!(cond)) { return returnvalue; }
 #endif

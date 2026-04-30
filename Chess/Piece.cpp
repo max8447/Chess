@@ -90,7 +90,7 @@ bool Piece::IsAllowedMove(int NewSquare) const
 		}
 	}
 
-	IM_ASSERT(IdxToCheck != 4);
+	ASSERT(IdxToCheck != 4, false);
 
 	int AllowedSquares = AllowedMoves[IdxToCheck];
 
