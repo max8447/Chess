@@ -74,6 +74,8 @@ struct Piece
 
 	static constexpr int RotateCW(int Square);	// only use in graphic contexts
 	static constexpr int RotateCCW(int Square);	// only use in graphic contexts
+
+	static constexpr const char* ColorToString(PieceColor Color);
 };
 
 constexpr std::pair<int, int> Piece::SquareToRankFile(int Square)
@@ -140,4 +142,9 @@ constexpr int Piece::RotateCCW(int Square)
 	const auto [Rank, File] = RotateCCW(SquareToRankFile(Square));
 
 	return RankFileToSquare(Rank, File);
+}
+
+constexpr const char* Piece::ColorToString(PieceColor Color)
+{
+	return Color == White ? "WHITE" : "BLACK";
 }

@@ -21,7 +21,9 @@ class ChessEngine
 {
 private:
 
-	GLuint ImageTexture = 0;
+	GLuint PiecesImageTexture = 0;
+
+	const char* FENString;
 
 	std::vector<std::unique_ptr<Piece>> Pieces;
 
@@ -34,7 +36,7 @@ private:
 	PieceColor CurrentMove = White; // white starts by default
 	CastlingRights CastlingRights;
 	int EnpassantSquare = -1;
-	int PromotionSquare = -1;
+	int PawnPromotionSquare = -1;
 	int HalfMoveClock = 0;
 	int FullMoveCounter = 1;
 	SpecialMove LastMove = SpecialMove{};

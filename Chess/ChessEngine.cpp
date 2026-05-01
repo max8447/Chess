@@ -15,16 +15,16 @@
 #define COL_ENDSCREEN_OVERLAY IM_COL32(0, 0, 0, 127)
 
 ChessEngine::ChessEngine(const char* FENString)
-	: SelectedPiece(nullptr)
+	: SelectedPiece(nullptr), FENString(FENString)
 {
 	int ImageWidth = 0;
 	int ImageHeight = 0;
 
-	bool bSuccess = LoadTextureFromFile("../Assets/Chess_Pieces_Sprite.png", &ImageTexture, &ImageWidth, &ImageHeight);
+	bool bSuccess = LoadTextureFromFile("../Assets/Chess_Pieces_Sprite.png", &PiecesImageTexture, &ImageWidth, &ImageHeight);
 
 	if (!bSuccess)
 	{
-		bSuccess = LoadTextureFromFile("../../Assets/Chess_Pieces_Sprite.png", &ImageTexture, &ImageWidth, &ImageHeight);
+		bSuccess = LoadTextureFromFile("../../Assets/Chess_Pieces_Sprite.png", &PiecesImageTexture, &ImageWidth, &ImageHeight);
 	}
 
 	ASSERT(bSuccess && "Failed to load pieces texture!");
@@ -39,11 +39,16 @@ void ChessEngine::LoadFENPosition(const char* FENString)
 	SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
 	SelectedPiece = nullptr;
 
+	AvailableMoves.clear();
+	NumPossibleMoves = -1;
+
 	CurrentMove = White;
 	CastlingRights = {};
 	EnpassantSquare = -1;
+	PawnPromotionSquare = -1;
 	HalfMoveClock = 0;
 	FullMoveCounter = 1;
+	LastMove = {};
 
 	if (FENString == nullptr || strlen(FENString) == 0)
 	{
@@ -379,12 +384,19 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 		}
 		else if (AbsDeltaRank == 2 && AbsDeltaFile == 0 && OldRank == 1 && !CapturedPiece && !bHasPieceOfSameColor) // pawn's first move
 		{
-			bIsMoveAllowed = true;
-			
-			OutSpecialMove->Type = PossibleEnpassant;
-			OutSpecialMove->OtherPieceMove = OutSpecialMove->Move;
+			int SquareInFront = MovingPiece->GetSquare(OldRank + 1, OldFile);
 
-			bAllowEnpassant = true;
+			Piece* PieceInFront = GetPiece(SquareInFront);
+
+			bIsMoveAllowed = PieceInFront == nullptr;
+
+			if (bIsMoveAllowed)
+			{
+				OutSpecialMove->Type = PossibleEnpassant;
+				OutSpecialMove->OtherPieceMove = OutSpecialMove->Move;
+
+				bAllowEnpassant = true;
+			}
 		}
 		else if (CapturedPiece) // pawn getting blocked
 		{
@@ -844,7 +856,7 @@ void ChessEngine::FinishMove(Piece* MovingPiece, const SpecialMove& Move)
 
 		if (Rank == 7)
 		{
-			PromotionSquare = Move.Move.NewSquare;
+			PawnPromotionSquare = Move.Move.NewSquare;
 		}
 	}
 
@@ -999,69 +1011,77 @@ void ChessEngine::HandleInput()
 
 	bool bRightMouseClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Right);
 
-	if (PromotionSquare == -1)
+	if (NumPossibleMoves > 0)
 	{
-		if (bLeftMouseClicked || bLeftMouseReleased)
+		if (PawnPromotionSquare == -1)
 		{
-			UpdateSelectedPiece(MousePos);
+			if (bLeftMouseClicked || bLeftMouseReleased)
+			{
+				UpdateSelectedPiece(MousePos);
+
+				if (bLeftMouseClicked)
+				{
+					SelectPiece(MousePos);
+				}
+			}
+			else if (bRightMouseClicked)
+			{
+				SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
+				SelectedPiece = nullptr;
+			}
+		}
+		else
+		{
+			Piece* PromotingPawn = GetPiece(PawnPromotionSquare);
+
+			ASSERT(PromotingPawn);
+
+			PieceType OldPieceType = PromotingPawn->Type;
+
+			const auto [Rank, File] = PromotingPawn->GetRankFile();
+
+			int OldSquare = Piece::RankFileToSquare(Rank - 1, File);
+
+			const ImVec2 SquareSize = GetSquareSize();
+			auto [PromotionSquareMin, PromotionSquareMax] = GetSquare(Piece::RotateCCW(PawnPromotionSquare));
+
+			if (PromotingPawn->Color == Black)
+			{
+				PromotionSquareMin.y -= 3.f * SquareSize.y;
+			}
 
 			if (bLeftMouseClicked)
 			{
-				SelectPiece(MousePos);
-			}
-		}
-		else if (bRightMouseClicked)
-		{
-			SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
-			SelectedPiece = nullptr;
-		}
-	}
-	else
-	{
-		Piece* PromotingPawn = GetPiece(PromotionSquare);
-
-		ASSERT(PromotingPawn);
-
-		PieceType OldPieceType = PromotingPawn->Type;
-
-		const auto [Rank, File] = PromotingPawn->GetRankFile();
-
-		int OldSquare = Piece::RankFileToSquare(Rank - 1, File);
-
-		const ImVec2 SquareSize = GetSquareSize();
-		auto [PromotionSquareMin, PromotionSquareMax] = GetSquare(Piece::RotateCCW(PromotionSquare));
-
-		if (PromotingPawn->Color == Black)
-		{
-			PromotionSquareMin.y -= 3.f * SquareSize.y;
-		}
-
-		if (bLeftMouseClicked)
-		{
-			bool bPromoted = false;
+				bool bPromoted = false;
 
 #define CHECK_FOR(PieceType, Distance) \
 const ImVec2 PieceType##Pos = ImVec2(PromotionSquareMin.x, PromotionSquareMin.y + (float)Distance * SquareSize.y); \
 if (MousePos >= PieceType##Pos && MousePos <= PieceType##Pos + SquareSize) { PromotingPawn->Type = PieceType; bPromoted = true; }
 
-			CHECK_FOR(Queen,	0);
-			CHECK_FOR(Knight,	1);
-			CHECK_FOR(Rook,		2);
-			CHECK_FOR(Bishop,	3);
+				CHECK_FOR(Queen, 0);
+				CHECK_FOR(Knight, 1);
+				CHECK_FOR(Rook, 2);
+				CHECK_FOR(Bishop, 3);
 
 #undef CHECK_FOR
 
-			if (bPromoted)
-			{
-				PromotionSquare = -1;
-				LastMove.Invalidate();
+				if (bPromoted)
+				{
+					PawnPromotionSquare = -1;
+					LastMove.Invalidate();
 
-				LastMove.Type = PawnPromotion;
-				LastMove.Move = { OldSquare, PromotingPawn->Square };
-				LastMove.OldPieceType = OldPieceType;
-
-				printf("Move: %d -> %d\n", OldSquare, PromotingPawn->Square);
+					LastMove.Type = PawnPromotion;
+					LastMove.Move = { OldSquare, PromotingPawn->Square };
+					LastMove.OldPieceType = OldPieceType;
+				}
 			}
+		}
+	}
+	else if (NumPossibleMoves == 0) // can also be -1 to signal not initialized
+	{
+		if (bLeftMouseClicked)
+		{
+			LoadFENPosition(FENString);
 		}
 	}
 }
@@ -1169,7 +1189,7 @@ void ChessEngine::DrawPiece(const ImVec2& Pos, const ImVec2& PieceSize, PieceTyp
 
 	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 
-	DrawList->AddImage((ImTextureID)ImageTexture, p_min, p_max, uv_min, uv_max);
+	DrawList->AddImage((ImTextureID)PiecesImageTexture, p_min, p_max, uv_min, uv_max);
 }
 
 void ChessEngine::DrawPiece(int Square, PieceType Type, PieceColor Color) const
@@ -1424,12 +1444,12 @@ void ChessEngine::DrawPieces() const
 
 void ChessEngine::DrawPromotionPopup() const
 {
-	if (PromotionSquare == -1)
+	if (PawnPromotionSquare == -1)
 	{
 		return;
 	}
 
-	Piece* PromotingPawn = GetPiece(PromotionSquare);
+	Piece* PromotingPawn = GetPiece(PawnPromotionSquare);
 
 	ASSERT(PromotingPawn);
 
@@ -1440,7 +1460,7 @@ void ChessEngine::DrawPromotionPopup() const
 	const ImVec2 SquareSize = GetSquareSize();
 	const ImVec2 BackgroundSize = ImVec2(SquareSize.x, 4.f * SquareSize.y);
 
-	auto [PromotionSquareMin, PromotionSquareMax] = GetSquare(Piece::RotateCCW(PromotionSquare));
+	auto [PromotionSquareMin, PromotionSquareMax] = GetSquare(Piece::RotateCCW(PawnPromotionSquare));
 
 	if (PromotingPawn->Color == Black)
 	{
@@ -1479,13 +1499,32 @@ DrawPiece(PieceType##Pos, SquareSize, PieceType, Color);
 
 void ChessEngine::DrawEndScreen() const
 {
+	PieceColor WinningColor = (PieceColor)(1 - CurrentMove);
+	const char* WinningText = WinningColor == White ? "White has won!\nClick to restart" : "Black has won!\nClick to restart";
+
 	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 
 	DrawList->ChannelsSetCurrent(1);
 
-	DrawList->AddRectFilled(ImVec2(0.f, 0.f), ImGui::GetWindowSize(), IM_COL32_BLACK_TRANS);
+	DrawList->AddRectFilled(ImVec2(0.f, 0.f), ImGui::GetWindowSize(), COL_ENDSCREEN_OVERLAY);
 
+	const ImGuiStyle& Style = ImGui::GetStyle();
 
+	float OldFontScale = Style.FontSizeBase;
+
+	const ImVec2 WindowSize = ImGui::GetWindowSize() - ImVec2(10.f, 10.f);
+	const ImVec2 TextSize = ImGui::CalcTextSize(WinningText);
+	const ImVec2 ScaleVec = WindowSize / TextSize;
+
+	float Scale = min(ScaleVec.x, ScaleVec.y);
+
+	const ImVec2 Cursor = (WindowSize - TextSize * Scale) / 2.f;
+
+	ImGui::SetCursorScreenPos(Cursor);
+
+	ImGui::PushFont(nullptr, OldFontScale * Scale);
+	ImGui::Text("%s", WinningText);
+	ImGui::PopFont();
 
 	DrawList->ChannelsSetCurrent(0);
 }
