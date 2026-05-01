@@ -101,10 +101,16 @@ void Gui::InitializeGui()
 	ImGui_ImplGlfw_InitForOpenGL(GLFWWindow, true);          // Second param install_callback=true will install GLFW callbacks and chain to existing ones.
 	ImGui_ImplOpenGL3_Init();
 
+	// https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation
+
 	const char* FENPosition =
-		// "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+		// "rnbqkbnr/8/8/8/8/8/PPPPPPPP/RNBQK2R w KQkq - 0 1"
 		// "8/8/8/4k3/8/8/8/RNBQ1BP1 w - - 0 1"
-		"r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
+		// "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
+		// "1B6/2n5/p1N1P2R/P1K3N1/4Pk2/1Q2p2p/6nP/1B4R1 w - - 0 1"
+		// "K6k/8/8/8/8/8/p7/8 b - - 0 1"
+		// "8/P7/8/8/8/8/8/k6K w - - 0 1"
 		;
 
 	ChessEngine = std::make_unique<::ChessEngine>(FENPosition);
@@ -127,7 +133,8 @@ void Gui::RenderGui()
 
 	ImGuiWindowFlags WindowFlags =
 		ImGuiWindowFlags_NoNav |
-		ImGuiWindowFlags_NoDecoration;
+		ImGuiWindowFlags_NoDecoration |
+		ImGuiWindowFlags_NoBringToFrontOnFocus; // so we aren't able to bring the board window to front while promoting
 
 	if (ImGui::Begin(Title, NULL, WindowFlags))
 	{
@@ -135,6 +142,8 @@ void Gui::RenderGui()
 		ChessEngine->Draw();
 	}
 	ImGui::End();
+
+	// ImGui::ShowDemoWindow();
 }
 
 void Gui::ErrorCallback(int error_code, const char* description)

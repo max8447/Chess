@@ -4,6 +4,7 @@
 
 enum PieceType
 {
+	Null = -1,
 	King = 0,
 	Queen = 1,
 	Bishop = 2,

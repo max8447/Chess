@@ -1,5 +1,9 @@
 #pragma once
 
+#define IM_VEC2_CLASS_EXTRA \
+inline bool operator<=(const ImVec2& other) const { return x <= other.x && y <= other.y; } \
+inline bool operator>=(const ImVec2& other) const { return x >= other.x && y >= other.y; }
+
 // imgui
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>

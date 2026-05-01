@@ -3,59 +3,17 @@
 #include "Includes.h"
 
 #include "Piece.h"
-
-struct Move
-{
-	int OldSquare;
-	int NewSquare;
-
-	Move()
-		: OldSquare(-1), NewSquare(-1)
-	{}
-
-	Move(int InOldSquare, int InNewSquare)
-		: OldSquare(InOldSquare), NewSquare(InNewSquare)
-	{}
-
-	Move(const char* AlgebraicOldSquare, const char* AlgebraicNewSquare) // no safety guaranteed
-	{
-		std::array<char, 2> OldSquareArray = { AlgebraicOldSquare[0], AlgebraicOldSquare[1] };
-		std::array<char, 2> NewSquareArray = { AlgebraicNewSquare[0], AlgebraicNewSquare[1] };
-
-		OldSquare = Piece::RankFileToSquare(Piece::AlgebraicToRankFile(OldSquareArray));
-		NewSquare = Piece::RankFileToSquare(Piece::AlgebraicToRankFile(NewSquareArray));
-	}
-
-	const bool IsValid() const // invalid moves (squares are -1)
-	{
-		return OldSquare != -1 && NewSquare != -1;
-	}
-
-	const bool IsZero() const // old square and new square are the same
-	{
-		return OldSquare == NewSquare;
-	}
-	
-	const bool IsAllowed() const // is valid AND is NOT zero
-	{
-		return IsValid() && !IsZero();
-	}
-
-	void Invalidate() // set *only* newsquare to -1
-	{
-		NewSquare = -1;
-	}
-};
+#include "Move.h"
 
 struct CastlingRights
 {
-	Move KingSide[2] = {
-		Move{ e1, g1 }, // white
-		Move{ e8, g8 }, // black
+	SpecialMove KingSide[2] = {
+		SpecialMove{ { e1, g1 }, Castle, { h1, f1 } },	// white
+		SpecialMove{ { e8, g8 }, Castle, { h8, f8 } },	// black
 	};
-	Move QueenSide[2] = {
-		Move{ e1, c1 }, // white
-		Move{ e8, c8 }, // black
+	SpecialMove QueenSide[2] = {
+		SpecialMove{ { e1, c1 }, Castle, { a1, d1 } },		// white
+		SpecialMove{ { e8, c8 }, Castle, { a8, d8 } },		// black
 	};
 };
 
@@ -66,17 +24,20 @@ private:
 	GLuint ImageTexture = 0;
 
 	std::vector<std::unique_ptr<Piece>> Pieces;
-	std::vector<std::unique_ptr<Piece>> CapturedPieces;
 
 	ImVec2 SelectedPieceMouseOffset = { NAN, NAN };
 	Piece* SelectedPiece = nullptr;
 
+	std::vector<SpecialMove> AvailableMoves;
+	int NumPossibleMoves = -1;
+
 	PieceColor CurrentMove = White; // white starts by default
 	CastlingRights CastlingRights;
 	int EnpassantSquare = -1;
+	int PromotionSquare = -1;
 	int HalfMoveClock = 0;
 	int FullMoveCounter = 1;
-	Move LastMove = { -1, -1 };
+	SpecialMove LastMove = SpecialMove{};
 
 #ifdef _DEBUG
 	mutable std::vector<int> MarkedSquares; // cleared at the start of Draw()
@@ -95,31 +56,35 @@ private:
 	// for the predicate: return true if we should move on to the next square, return false if we should stop and return
 	void IterateSquares(std::function<bool(const ImVec2& Min, const ImVec2& Max, int Rank, int File)> Predicate) const;
 
-	std::vector<Move> GetAvailableMoves(Piece* TargetPiece) const;
+	void GetAllAvailableMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves, bool bAllowPseudolegalMoves = false) const;
+	void GetAvailableMoves(Piece* TargetPiece, std::vector<SpecialMove>* OutAvailableMoves, bool bAllowPseudolegalMoves = false) const;
+
+	void CalculatePossibleMoves();
 
 	bool IsAllowedMove(
 		Piece* MovingPiece,
 		int NewSquare,
 		bool bAllowPseudolegal,
-		decltype(Pieces)::const_iterator* OutCapturedPiece = nullptr,
-		int* OutEnpassantSquare = nullptr,
-		Move* OutCastledRookMove = nullptr
+		SpecialMove* OutSpecialMove
 	) const;
 	
+	void MakeMove(const SpecialMove& Move) const;
+	void UnMakeMove(const SpecialMove& Move) const;
+
 	bool IsInCheck(PieceColor Color) const;
 	bool IsAttacked(Piece* AttackedPiece) const;
 
-	void RemoveCastlingRights(Piece* MovedPiece);
-	void FinishMove(Piece* MovingPiece);
+	void RemoveCastlingRights(Piece* MovedPiece, int NewSquare);
+
+	void FinishMove(Piece* MovingPiece, const SpecialMove& Move);
 	void TryMoveTo(Piece* MovingPiece, int NewSquare);
+	void CapturePiece(Piece* CapturedPiece);
 
 	void SnapSelectedPiece(const ImVec2& Pos);
 	void UpdateSelectedPiece(const ImVec2& Pos);
 	void SelectPiece(const ImVec2& Pos);
 
 	void HandleInput();
-
-	void CapturePiece(decltype(Pieces)::const_iterator CapturedPiece);
 
 	Piece* GetPiece(int Rank, int File) const;
 	Piece* GetPiece(int Square) const;
@@ -131,14 +96,11 @@ private:
 	std::pair<ImVec2, ImVec2> GetSquare(std::pair<int, int> RankFile) const;
 	std::pair<ImVec2, ImVec2> GetSquare(int Square) const;
 
-	decltype(Pieces)::const_iterator GetPieceIt(int Rank, int File) const;
-	decltype(Pieces)::const_iterator GetPieceIt(int Square) const;
-
 	ImVec2 GetSquareSize() const;
 
-	void DrawPiece(const ImVec2& Pos, const ImVec2& PieceSize, PieceType Type, PieceColor Color, bool bCaptured) const;
-	void DrawPiece(int Square, PieceType Type, PieceColor Color, bool bCaptured) const;
-	void DrawPiece(const Piece& Piece, bool bCaptured) const;
+	void DrawPiece(const ImVec2& Pos, const ImVec2& PieceSize, PieceType Type, PieceColor Color) const;
+	void DrawPiece(int Square, PieceType Type, PieceColor Color) const;
+	void DrawPiece(const Piece& Piece) const;
 
 #ifdef _DEBUG
 	void DrawMarkedSquares() const;
@@ -147,9 +109,10 @@ private:
 	void DrawGrid() const;
 	void DrawSelectedPiece() const;
 	void DrawMoveInfo() const;
-	void DrawAllowedMoves() const;
+	void DrawAvailableMoves() const;
 	void DrawPieces() const;
-	void DrawCapturedPieces() const;
+	void DrawPromotionPopup() const;
+	void DrawEndScreen() const;
 
 public:
 
