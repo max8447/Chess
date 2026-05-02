@@ -41,13 +41,14 @@ void ChessEngine::LoadFENPosition(const char* FENString)
 
 	AvailableMoves.clear();
 	NumPossibleMoves = -1;
+	bGameEnded = false;
 
 	CurrentMove = White;
 	CastlingRights = {};
 	EnpassantSquare = -1;
 	PawnPromotionSquare = -1;
 	HalfMoveClock = 0;
-	FullMoveCounter = 1;
+	FullMoveCounter = 0; // starts at 1, however the FEN string will contain the correct count
 	LastMove = {};
 
 	if (FENString == nullptr || strlen(FENString) == 0)
@@ -108,13 +109,25 @@ void ChessEngine::LoadFENPosition(const char* FENString)
 			}
 			else if (!bSetupHalfMoveClock)
 			{
-				HalfMoveClock = c - '0';
+				FENString--;
+
+				while (isdigit(c = *FENString++))
+				{
+					HalfMoveClock *= 10;
+					HalfMoveClock += c - '0';
+				}
 
 				bSetupHalfMoveClock = true;
 			}
 			else if (!bSetupFullMoveCounter)
 			{
-				FullMoveCounter = c - '0';
+				FENString--;
+
+				while (isdigit(c = *FENString++))
+				{
+					FullMoveCounter *= 10;
+					FullMoveCounter += c - '0';
+				}
 
 				bSetupFullMoveCounter = true;
 			}
@@ -341,6 +354,11 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 
 			bIsMoveAllowed = false;
 		}
+		else if (CapturedPiece->Type == King)
+		{
+			CapturedPiece = nullptr;
+			bIsMoveAllowed = false;
+		}
 		else
 		{
 			OutSpecialMove->Type = Capture;
@@ -377,6 +395,11 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 							OutSpecialMove->Type = Capture;
 							OutSpecialMove->OtherPieceMove = { EnpassantSquare, -1 };
 							OutSpecialMove->CapturedPiece = CapturedPiece;
+						}
+						else
+						{
+							CapturedPiece = nullptr;
+							bIsMoveAllowed = false;
 						}
 					}
 				}
@@ -596,13 +619,6 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 	nanoseconds IsAllowedMoveDuration = duration_cast<nanoseconds>(IsAllowedMoveEnd - IsAllowedMoveStart);
 
 	printf(__FUNCTION__" took %lld ns\n", IsAllowedMoveDuration.count());
-
-	if (IsAllowedMoveDuration > 4us)
-	{
-		auto [LongRank, LongFile] = MovingPiece->GetRankFile(NewSquare);
-		LongFile = 7 - LongFile;
-		printf("%s took long\n", Piece::RankFileToAlgebraic({ LongRank, LongFile }).data());
-	}
 #endif
 
 	return bIsMoveAllowed;
@@ -877,6 +893,11 @@ void ChessEngine::FinishMove(Piece* MovingPiece, const SpecialMove& Move)
 	CurrentMove = (PieceColor)(1 - CurrentMove);
 
 	CalculatePossibleMoves();
+
+	if (HalfMoveClock >= 100) // it should actually only enforce it at 150 and offer draw at 100 but it's fine for now (todo)
+	{
+		bGameEnded = true;
+	}
 }
 
 void ChessEngine::TryMoveTo(Piece* MovingPiece, int NewSquare)
@@ -1077,7 +1098,7 @@ if (MousePos >= PieceType##Pos && MousePos <= PieceType##Pos + SquareSize) { Pro
 			}
 		}
 	}
-	else if (NumPossibleMoves == 0) // can also be -1 to signal not initialized
+	else if (bGameEnded)
 	{
 		if (bLeftMouseClicked)
 		{
@@ -1490,6 +1511,8 @@ DrawPiece(PieceType##Pos, SquareSize, PieceType, Color);
 		DRAW_TYPE(Rook,		2);
 		DRAW_TYPE(Bishop,	3);
 
+#undef DRAW_TYPE
+
 		DrawList->ChannelsSetCurrent(0);
 	}
 	ImGui::End();
@@ -1499,8 +1522,52 @@ DrawPiece(PieceType##Pos, SquareSize, PieceType, Color);
 
 void ChessEngine::DrawEndScreen() const
 {
-	PieceColor WinningColor = (PieceColor)(1 - CurrentMove);
-	const char* WinningText = WinningColor == White ? "White has won!\nClick to restart" : "Black has won!\nClick to restart";
+	PieceColor LosingColor = CurrentMove;
+	PieceColor WinningColor = (PieceColor)(1 - LosingColor);
+	
+	enum EndingState
+	{
+		Checkmate,
+		Stalemate,
+		Draw
+	};
+
+	EndingState EndingState;
+
+	if (IsInCheck(LosingColor))
+	{
+		EndingState = Checkmate;
+	}
+	else if (NumPossibleMoves == 0)
+	{
+		EndingState = Stalemate;
+	}
+	else
+	{
+		EndingState = Draw;
+	}
+
+	const char* WinnerType = nullptr;
+
+	switch (EndingState)
+	{
+	case Checkmate:
+		WinnerType = WinningColor == White ?
+			"White has won by checkmate" :
+			"Black has won by checkmate";
+		break;
+	case Stalemate:
+		WinnerType = "Draw by stalemate";
+		break;
+	case Draw:
+		WinnerType = "Draw";
+		break;
+	default:
+		break;
+	}
+
+	char WinningText[64] = { 0 };
+	sprintf_s(WinningText, "%s!\nClick to restart", WinnerType);
 
 	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 
@@ -1537,6 +1604,11 @@ void ChessEngine::Update()
 	{
 		CalculatePossibleMoves();
 	}
+	
+	if (NumPossibleMoves == 0)
+	{
+		bGameEnded = true;
+	}
 }
 
 void ChessEngine::Draw() const
@@ -1557,7 +1629,7 @@ void ChessEngine::Draw() const
 	DrawPieces();
 	DrawPromotionPopup();
 
-	if (NumPossibleMoves == 0 && FullMoveCounter > 1)
+	if (bGameEnded && FullMoveCounter > 1)
 	{
 		DrawEndScreen();
 	}

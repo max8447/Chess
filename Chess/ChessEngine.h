@@ -32,6 +32,7 @@ private:
 
 	std::vector<SpecialMove> AvailableMoves;
 	int NumPossibleMoves = -1;
+	bool bGameEnded = false;
 
 	PieceColor CurrentMove = White; // white starts by default
 	CastlingRights CastlingRights;

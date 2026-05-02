@@ -2,7 +2,7 @@
 
 #include "Includes.h"
 
-enum PieceType
+enum PieceType : int
 {
 	Null = -1,
 	King = 0,
@@ -13,13 +13,13 @@ enum PieceType
 	Pawn = 5
 };
 
-enum PieceColor
+enum PieceColor : unsigned int
 {
 	White,
 	Black
 };
 
-enum AlgebraicSquare
+enum AlgebraicSquare : unsigned int
 {
 	a1, b1, c1, d1, e1, f1, g1, h1,
 	a2, b2, c2, d2, e2, f2, g2, h2,
