@@ -26,6 +26,8 @@ inline bool operator>=(const ImVec2& other) const { return x >= other.x && y >= 
 #include <vector>
 #include <functional>
 #include <array>
+#include <algorithm>
+#include <random>
 
 
 #ifdef _DEBUG

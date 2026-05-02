@@ -30,6 +30,7 @@ private:
 	ImVec2 SelectedPieceMouseOffset = { NAN, NAN };
 	Piece* SelectedPiece = nullptr;
 
+	std::vector<SpecialMove> AllAvailableMoves;
 	std::vector<SpecialMove> AvailableMoves;
 	int NumPossibleMoves = -1;
 	bool bGameEnded = false;
@@ -42,8 +43,13 @@ private:
 	int FullMoveCounter = 1;
 	SpecialMove LastMove = SpecialMove{};
 
+	// TODO: make these selectable
+	
+	PieceColor PlayerColor = White;
+	PieceColor BotColor = Black;
+
 #ifdef _DEBUG
-	mutable std::vector<int> MarkedSquares; // cleared at the start of Draw()
+	mutable std::vector<int> MarkedSquares; // cleared at the start of Draw() and drawn at the end of Draw()
 #endif
 
 public:
@@ -59,6 +65,8 @@ private:
 	// for the predicate: return true if we should move on to the next square, return false if we should stop and return
 	void IterateSquares(std::function<bool(const ImVec2& Min, const ImVec2& Max, int Rank, int File)> Predicate) const;
 
+	// move generation functions
+
 	void GetAllAvailableMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves, bool bAllowPseudolegalMoves = false) const;
 	void GetAvailableMoves(Piece* TargetPiece, std::vector<SpecialMove>* OutAvailableMoves, bool bAllowPseudolegalMoves = false) const;
 
@@ -70,18 +78,28 @@ private:
 		bool bAllowPseudolegal,
 		SpecialMove* OutSpecialMove
 	) const;
-	
+
 	void MakeMove(const SpecialMove& Move) const;
 	void UnMakeMove(const SpecialMove& Move) const;
 
 	bool IsInCheck(PieceColor Color) const;
 	bool IsAttacked(Piece* AttackedPiece) const;
 
+	// universal move-making functions
+
 	void RemoveCastlingRights(Piece* MovedPiece, int NewSquare);
 
 	void FinishMove(Piece* MovingPiece, const SpecialMove& Move);
 	void TryMoveTo(Piece* MovingPiece, int NewSquare);
 	void CapturePiece(Piece* CapturedPiece);
+
+	// bot functions
+
+	void GenerateMove();
+	int GetPieceValues(PieceColor Color);
+	float EvalMove(const SpecialMove& Move);
+
+	// player functions
 
 	void SnapSelectedPiece(const ImVec2& Pos);
 	void UpdateSelectedPiece(const ImVec2& Pos);

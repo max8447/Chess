@@ -299,12 +299,17 @@ void ChessEngine::GetAvailableMoves(Piece* TargetPiece, std::vector<SpecialMove>
 
 void ChessEngine::CalculatePossibleMoves()
 {
-	std::vector<SpecialMove> PossibleMoves;
 	bool bAllowPseudolegal = false;
 
-	GetAllAvailableMoves(CurrentMove, &PossibleMoves, bAllowPseudolegal);
+	AllAvailableMoves.clear();
+	GetAllAvailableMoves(CurrentMove, &AllAvailableMoves, bAllowPseudolegal);
 
-	NumPossibleMoves = PossibleMoves.size();
+	NumPossibleMoves = AllAvailableMoves.size();
+
+	if (NumPossibleMoves == 0)
+	{
+		bGameEnded = true;
+	}
 }
 
 bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPseudolegal, SpecialMove* OutSpecialMove) const
@@ -354,7 +359,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 
 			bIsMoveAllowed = false;
 		}
-		else if (CapturedPiece->Type == King)
+		else if (CapturedPiece->Type == King && false)
 		{
 			CapturedPiece = nullptr;
 			bIsMoveAllowed = false;
@@ -618,7 +623,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 	steady_clock::time_point IsAllowedMoveEnd = high_resolution_clock::now();
 	nanoseconds IsAllowedMoveDuration = duration_cast<nanoseconds>(IsAllowedMoveEnd - IsAllowedMoveStart);
 
-	printf(__FUNCTION__" took %lld ns\n", IsAllowedMoveDuration.count());
+	// printf(__FUNCTION__" took %lld ns\n", IsAllowedMoveDuration.count());
 #endif
 
 	return bIsMoveAllowed;
@@ -857,40 +862,50 @@ void ChessEngine::RemoveCastlingRights(Piece* MovedPiece, int NewSquare)
 
 void ChessEngine::FinishMove(Piece* MovingPiece, const SpecialMove& Move)
 {
-	ASSERT(MovingPiece);
+	ASSERT(MovingPiece && Move.IsAllowed());
 
-	if (CurrentMove == Black)
+	if (Move.Type != PawnPromotion)
 	{
-		FullMoveCounter++;
-	}
-
-	if (MovingPiece->Type == Pawn)
-	{
-		HalfMoveClock = 0;
-
-		const auto [Rank, File] = MovingPiece->GetRankFile(Move.Move.NewSquare);
-
-		if (Rank == 7)
+		if (CurrentMove == Black)
 		{
-			PawnPromotionSquare = Move.Move.NewSquare;
+			FullMoveCounter++;
+		}
+
+		if (MovingPiece->Type == Pawn)
+		{
+			HalfMoveClock = 0;
+
+			const auto [Rank, File] = MovingPiece->GetRankFile(Move.Move.NewSquare);
+
+			if (Rank == 7)
+			{
+				PawnPromotionSquare = Move.Move.NewSquare;
+			}
+		}
+
+		if (Move.Type == PossibleEnpassant)
+		{
+			EnpassantSquare = Move.OtherPieceMove.NewSquare;
+		}
+		if (Move.Type == Castle && Move.OtherPieceMove.IsAllowed())
+		{
+			ASSERT(Move.CastledRook);
+
+			Move.CastledRook->Square = Move.OtherPieceMove.NewSquare;
 		}
 	}
-
-	if (Move.Type == PossibleEnpassant)
+	else
 	{
-		EnpassantSquare = Move.OtherPieceMove.NewSquare;
-	}
-	if (Move.Type == Castle && Move.OtherPieceMove.IsAllowed())
-	{
-		ASSERT(Move.CastledRook);
-
-		Move.CastledRook->Square = Move.OtherPieceMove.NewSquare;
+		PawnPromotionSquare = -1;
 	}
 
 	LastMove = Move;
 	MovingPiece->Square = Move.Move.NewSquare;
 
-	CurrentMove = (PieceColor)(1 - CurrentMove);
+	if (PawnPromotionSquare == -1)
+	{
+		CurrentMove = (PieceColor)(1 - CurrentMove);
+	}
 
 	CalculatePossibleMoves();
 
@@ -945,6 +960,108 @@ void ChessEngine::CapturePiece(Piece* CapturedPiece)
 	HalfMoveClock = 0;
 
 	CapturedPiece->Square = -1;
+}
+
+void ChessEngine::GenerateMove()
+{
+	if (PawnPromotionSquare != -1)
+	{
+		Piece* PromotingPawn = GetPiece(PawnPromotionSquare);
+
+		ASSERT(PromotingPawn);
+
+		PieceType OldPieceType = PromotingPawn->Type;
+
+		ASSERT(OldPieceType == Pawn);
+
+		int OldSquare = LastMove.Move.OldSquare;
+
+		PromotingPawn->Type = Queen; // TODO: choose highest for now
+
+		PawnPromotionSquare = -1;
+		LastMove.Invalidate();
+
+		LastMove.Type = PawnPromotion;
+		LastMove.Move = { OldSquare, PromotingPawn->Square };
+
+		SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
+		SelectedPiece = nullptr;
+
+		FinishMove(PromotingPawn, LastMove);
+
+		return;
+	}
+
+	if (AllAvailableMoves.empty())
+	{
+		CalculatePossibleMoves();
+	}
+
+	if (AllAvailableMoves.empty())
+	{
+		return; // checkmate, bot lost
+	}
+
+	std::ranges::shuffle(AllAvailableMoves, std::default_random_engine());
+
+	SpecialMove ChosenMove;
+	int BestScore = INT32_MIN;
+
+	for (const SpecialMove& Move : AllAvailableMoves)
+	{
+		int MoveScore = EvalMove(Move);
+
+		if (MoveScore > BestScore)
+		{
+			BestScore = MoveScore;
+			ChosenMove = Move;
+		}
+	}
+
+	if (ChosenMove.IsAllowed())
+	{
+		printf("trying move with score %d\n", BestScore);
+		TryMoveTo(ChosenMove.MovedPiece, ChosenMove.Move.NewSquare);
+	}
+}
+
+int ChessEngine::GetPieceValues(PieceColor Color)
+{
+	int Value = 0;
+
+	for (const auto& Piece : Pieces)
+	{
+		if (Piece->Color != Color || Piece->Type == King) // don't count kings
+		{
+			continue;
+		}
+
+		Value += PieceValues[Piece->Type];
+	}
+
+	return Value;
+}
+
+float ChessEngine::EvalMove(const SpecialMove& Move)
+{
+	int Score = 0;
+
+	int PlayerPieceValuesBefore = GetPieceValues(PlayerColor);
+	int BotPieceValuesBefore = GetPieceValues(BotColor);
+
+	MakeMove(Move);
+
+	int PlayerPieceValuesAfter = GetPieceValues(PlayerColor);
+	int BotPieceValuesAfter = GetPieceValues(BotColor);
+
+	if (IsInCheck(PlayerColor))
+	{
+		Score += 10;
+	}
+
+	UnMakeMove(Move);
+
+	return (float)(BotPieceValuesAfter - BotPieceValuesBefore) - (float)(PlayerPieceValuesAfter - PlayerPieceValuesBefore);
 }
 
 void ChessEngine::SnapSelectedPiece(const ImVec2& Pos)
@@ -1004,7 +1121,7 @@ void ChessEngine::SelectPiece(const ImVec2& Pos)
 	{
 		if (SelectedPiece)
 		{
-			if (SelectedPiece->Color != CurrentMove)
+			if (SelectedPiece->Color != CurrentMove /* || SelectedPiece->Color != PlayerColor */)
 			{
 				SelectedPiece = nullptr;
 			}
@@ -1059,9 +1176,9 @@ void ChessEngine::HandleInput()
 
 			PieceType OldPieceType = PromotingPawn->Type;
 
-			const auto [Rank, File] = PromotingPawn->GetRankFile();
+			ASSERT(OldPieceType == Pawn);
 
-			int OldSquare = Piece::RankFileToSquare(Rank - 1, File);
+			int OldSquare = LastMove.Move.OldSquare;
 
 			const ImVec2 SquareSize = GetSquareSize();
 			auto [PromotionSquareMin, PromotionSquareMax] = GetSquare(Piece::RotateCCW(PawnPromotionSquare));
@@ -1093,7 +1210,11 @@ if (MousePos >= PieceType##Pos && MousePos <= PieceType##Pos + SquareSize) { Pro
 
 					LastMove.Type = PawnPromotion;
 					LastMove.Move = { OldSquare, PromotingPawn->Square };
-					LastMove.OldPieceType = OldPieceType;
+					
+					SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
+					SelectedPiece = nullptr;
+
+					FinishMove(PromotingPawn, LastMove);
 				}
 			}
 		}
@@ -1465,10 +1586,7 @@ void ChessEngine::DrawPieces() const
 
 void ChessEngine::DrawPromotionPopup() const
 {
-	if (PawnPromotionSquare == -1)
-	{
-		return;
-	}
+	ASSERT(PawnPromotionSquare != -1);
 
 	Piece* PromotingPawn = GetPiece(PawnPromotionSquare);
 
@@ -1598,7 +1716,14 @@ void ChessEngine::DrawEndScreen() const
 
 void ChessEngine::Update()
 {
-	HandleInput();
+	if (CurrentMove == PlayerColor || bGameEnded)
+	{
+		HandleInput();
+	}
+	else if (CurrentMove == BotColor)
+	{
+		GenerateMove();
+	}
 
 	if (NumPossibleMoves == -1)
 	{
@@ -1625,9 +1750,18 @@ void ChessEngine::Draw() const
 	DrawGrid();
 	DrawMoveInfo();
 	DrawSelectedPiece();
-	DrawAvailableMoves();
+
+	if (!bGameEnded)
+	{
+		DrawAvailableMoves();
+	}
+
 	DrawPieces();
-	DrawPromotionPopup();
+
+	if (PawnPromotionSquare != -1)
+	{
+		DrawPromotionPopup();
+	}
 
 	if (bGameEnded && FullMoveCounter > 1)
 	{

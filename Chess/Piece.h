@@ -13,6 +13,15 @@ enum PieceType : int
 	Pawn = 5
 };
 
+constexpr int PieceValues[] = { // has to match ordering of enum above
+	INT32_MAX,	// king
+	9,			// queen
+	3,			// bishop
+	3,			// knight
+	5,			// rook
+	1,			// pawn
+};
+
 enum PieceColor : unsigned int
 {
 	White,

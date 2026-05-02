@@ -69,20 +69,19 @@ struct SpecialMove
 	Piece* MovedPiece;
 	Piece* CapturedPiece;
 	Piece* CastledRook;
-	PieceType OldPieceType;
 
 	SpecialMove()
-		: Move(), Type(None), OtherPieceMove(), MovedPiece(nullptr), CapturedPiece(nullptr), CastledRook(nullptr), OldPieceType(Null)
+		: Move(), Type(None), OtherPieceMove(), MovedPiece(nullptr), CapturedPiece(nullptr), CastledRook(nullptr)
 	{}
 
 	SpecialMove(SimpleMove InMove, SpecialMoveType InType, SimpleMove InOtherPieceMove)
-		: Move(InMove), Type(InType), OtherPieceMove(InOtherPieceMove), MovedPiece(nullptr), CapturedPiece(nullptr), CastledRook(nullptr), OldPieceType(Null)
+		: Move(InMove), Type(InType), OtherPieceMove(InOtherPieceMove), MovedPiece(nullptr), CapturedPiece(nullptr), CastledRook(nullptr)
 	{}
 
 	const bool IsValid() const // invalid moves (squares are -1)
 	{
 		return Move.OldSquare != -1 && Move.NewSquare != -1 &&
-			(Type == None ?
+			(Type == None || Type == PawnPromotion ?
 				true :
 				Type == Capture ?
 				OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1 :
