@@ -95,9 +95,10 @@ private:
 
 	// bot functions
 
+	void HandleBotPawnPromotion();
 	void GenerateMove();
-	int GetPieceValues(PieceColor Color);
-	float EvalMove(const SpecialMove& Move);
+	int GetPieceValues(PieceColor Color) const;
+	float EvalMove(const SpecialMove& Move) const;
 
 	// player functions
 

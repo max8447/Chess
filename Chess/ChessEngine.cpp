@@ -359,7 +359,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 
 			bIsMoveAllowed = false;
 		}
-		else if (CapturedPiece->Type == King && false)
+		else if (CapturedPiece->Type == King)
 		{
 			CapturedPiece = nullptr;
 			bIsMoveAllowed = false;
@@ -637,7 +637,7 @@ void ChessEngine::MakeMove(const SpecialMove& Move) const
 
 	Piece* OtherPiece = nullptr;
 
-	if (Move.OtherPieceMove.IsAllowed())
+	if (Move.IsAllowed())
 	{
 		if (Move.Type == Castle)
 		{
@@ -663,7 +663,7 @@ void ChessEngine::UnMakeMove(const SpecialMove& Move) const
 
 	Piece* OtherPiece = nullptr;
 
-	if (Move.OtherPieceMove.IsAllowed())
+	if (Move.IsAllowed())
 	{
 		if (Move.Type == Castle)
 		{
@@ -804,6 +804,12 @@ bool ChessEngine::IsAttacked(Piece* AttackedPiece) const
 
 			const int CurrentRank = Rank + DeltaRank;
 			const int CurrentFile = File + DeltaFile;
+
+			if (CurrentRank < 0 || CurrentRank > 7 ||
+				CurrentFile < 0 || CurrentFile > 7)
+			{
+				continue;
+			}
 
 			const int CurrentSquare = AttackedPiece->GetSquare(CurrentRank, CurrentFile);
 
@@ -962,33 +968,42 @@ void ChessEngine::CapturePiece(Piece* CapturedPiece)
 	CapturedPiece->Square = -1;
 }
 
+void ChessEngine::HandleBotPawnPromotion()
+{
+	if (PawnPromotionSquare == -1)
+	{
+		return;
+	}
+
+	Piece* PromotingPawn = GetPiece(PawnPromotionSquare);
+
+	ASSERT(PromotingPawn);
+
+	PieceType OldPieceType = PromotingPawn->Type;
+
+	ASSERT(OldPieceType == Pawn);
+
+	int OldSquare = LastMove.Move.OldSquare;
+
+	PromotingPawn->Type = Queen; // TODO: choose highest for now
+
+	PawnPromotionSquare = -1;
+	LastMove.Invalidate();
+
+	LastMove.Type = PawnPromotion;
+	LastMove.Move = { OldSquare, PromotingPawn->Square };
+
+	SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
+	SelectedPiece = nullptr;
+
+	FinishMove(PromotingPawn, LastMove);
+}
+
 void ChessEngine::GenerateMove()
 {
 	if (PawnPromotionSquare != -1)
 	{
-		Piece* PromotingPawn = GetPiece(PawnPromotionSquare);
-
-		ASSERT(PromotingPawn);
-
-		PieceType OldPieceType = PromotingPawn->Type;
-
-		ASSERT(OldPieceType == Pawn);
-
-		int OldSquare = LastMove.Move.OldSquare;
-
-		PromotingPawn->Type = Queen; // TODO: choose highest for now
-
-		PawnPromotionSquare = -1;
-		LastMove.Invalidate();
-
-		LastMove.Type = PawnPromotion;
-		LastMove.Move = { OldSquare, PromotingPawn->Square };
-
-		SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
-		SelectedPiece = nullptr;
-
-		FinishMove(PromotingPawn, LastMove);
-
+		HandleBotPawnPromotion();
 		return;
 	}
 
@@ -1025,7 +1040,7 @@ void ChessEngine::GenerateMove()
 	}
 }
 
-int ChessEngine::GetPieceValues(PieceColor Color)
+int ChessEngine::GetPieceValues(PieceColor Color) const
 {
 	int Value = 0;
 
@@ -1042,9 +1057,9 @@ int ChessEngine::GetPieceValues(PieceColor Color)
 	return Value;
 }
 
-float ChessEngine::EvalMove(const SpecialMove& Move)
+float ChessEngine::EvalMove(const SpecialMove& Move) const
 {
-	int Score = 0;
+	float Score = 0.f;
 
 	int PlayerPieceValuesBefore = GetPieceValues(PlayerColor);
 	int BotPieceValuesBefore = GetPieceValues(BotColor);
@@ -1056,12 +1071,14 @@ float ChessEngine::EvalMove(const SpecialMove& Move)
 
 	if (IsInCheck(PlayerColor))
 	{
-		Score += 10;
+		Score += 10.f;
 	}
 
 	UnMakeMove(Move);
 
-	return (float)(BotPieceValuesAfter - BotPieceValuesBefore) - (float)(PlayerPieceValuesAfter - PlayerPieceValuesBefore);
+	Score += (float)(BotPieceValuesAfter - BotPieceValuesBefore) - (float)(PlayerPieceValuesAfter - PlayerPieceValuesBefore);
+
+	return Score;
 }
 
 void ChessEngine::SnapSelectedPiece(const ImVec2& Pos)
@@ -1758,7 +1775,7 @@ void ChessEngine::Draw() const
 
 	DrawPieces();
 
-	if (PawnPromotionSquare != -1)
+	if (PawnPromotionSquare != -1 && CurrentMove == PlayerColor)
 	{
 		DrawPromotionPopup();
 	}

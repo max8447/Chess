@@ -80,12 +80,18 @@ struct SpecialMove
 
 	const bool IsValid() const // invalid moves (squares are -1)
 	{
-		return Move.OldSquare != -1 && Move.NewSquare != -1 &&
-			(Type == None || Type == PawnPromotion ?
-				true :
-				Type == Capture ?
-				OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1 :
-				OtherPieceMove.IsValid());
+		bool bIsValid = Move.OldSquare != -1 && Move.NewSquare != -1;
+
+		if (Type == Capture)
+		{
+			bIsValid = bIsValid && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1;
+		}
+		else if (Type != None && Type != PawnPromotion)
+		{
+			bIsValid = bIsValid && OtherPieceMove.IsValid();
+		}
+
+		return bIsValid;
 	}
 
 	const bool IsZero() const // old square and new square are the same
