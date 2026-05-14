@@ -28,13 +28,16 @@ inline bool operator>=(const ImVec2& other) const { return x >= other.x && y >= 
 #include <array>
 #include <algorithm>
 #include <random>
+#include <chrono>
+#include <unordered_set>
+#include <execution>
+#include <cstdint>
 
+#define ARRAY_LEN(arr) (sizeof(arr) / sizeof(*(arr)))
+#define INT3 __debugbreak()
 
 #ifdef _DEBUG
-#include <chrono>
-
-#define INT3 __debugbreak()
 #define ASSERT(cond, ...) IM_ASSERT(cond)
 #else
-#define ASSERT(cond, returnvalue) if (!(cond)) { return returnvalue; }
+#define ASSERT(cond, returnvalue) if (!(cond)) { INT3; return returnvalue; }
 #endif

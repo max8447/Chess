@@ -2,7 +2,7 @@
 
 #include "Includes.h"
 
-enum PieceType : int
+enum PieceType : int8_t
 {
 	Null = -1,
 	King = 0,
@@ -10,7 +10,9 @@ enum PieceType : int
 	Bishop = 2,
 	Knight = 3,
 	Rook = 4,
-	Pawn = 5
+	Pawn = 5,
+
+	PieceType_Count,
 };
 
 constexpr int PieceValues[] = { // has to match ordering of enum above
@@ -22,13 +24,13 @@ constexpr int PieceValues[] = { // has to match ordering of enum above
 	1,			// pawn
 };
 
-enum PieceColor : unsigned int
+enum PieceColor : uint8_t
 {
 	White,
 	Black
 };
 
-enum AlgebraicSquare : unsigned int
+enum AlgebraicSquare : uint8_t
 {
 	a1, b1, c1, d1, e1, f1, g1, h1,
 	a2, b2, c2, d2, e2, f2, g2, h2,
@@ -37,7 +39,7 @@ enum AlgebraicSquare : unsigned int
 	a5, b5, c5, d5, e5, f5, g5, h5,
 	a6, b6, c6, d6, e6, f6, g6, h6,
 	a7, b7, c7, d7, e7, f7, g7, h7,
-	a8, b8, c8, d8, e8, f8, g8, h8
+	a8, b8, c8, d8, e8, f8, g8, h8,
 };
 
 struct Piece
@@ -75,7 +77,9 @@ struct Piece
 	static constexpr int RankFileToSquare(int Rank, int File);
 	static constexpr int RankFileToSquare(std::pair<int, int> RankFile);
 
+	static constexpr std::array<char, 3> SquareToAlgebraic(int Square);
 	static constexpr std::array<char, 3> RankFileToAlgebraic(std::pair<int, int> RankFile);
+
 	static constexpr std::pair<int, int> AlgebraicToRankFile(std::array<char, 2> Algebraic); // no safety guaranteed
 
 	static constexpr std::pair<int, int> RotateCW(std::pair<int, int> RankFile);	// only use in graphic contexts
@@ -107,6 +111,11 @@ constexpr int Piece::RankFileToSquare(std::pair<int, int> RankFile)
 	const auto [Rank, File] = RankFile;
 
 	return RankFileToSquare(Rank, File);
+}
+
+constexpr std::array<char, 3> Piece::SquareToAlgebraic(int Square)
+{
+	return RankFileToAlgebraic(SquareToRankFile(Square));
 }
 
 constexpr std::array<char, 3> Piece::RankFileToAlgebraic(std::pair<int, int> RankFile)

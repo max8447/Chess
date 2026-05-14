@@ -104,15 +104,8 @@ void Gui::InitializeGui()
 	// https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation
 
 	const char* FENPosition =
-		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-		// "rnbqkbnr/8/8/8/8/8/PPPPPPPP/RNBQK2R w KQkq - 0 1"
-		// "8/8/8/4k3/8/8/8/RNBQ1BP1 w - - 0 1"
-		// "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
-		// "1B6/2n5/p1N1P2R/P1K3N1/4Pk2/1Q2p2p/6nP/1B4R1 w - - 0 1"
-		// "K6k/8/8/8/8/8/p7/8 b - - 0 1"
-		// "8/P7/8/8/8/8/8/k6K w - - 0 1"
-		// "8/8/8/8/8/8/5k2/6K1 w - - 149 75"
-		// "k7/8/8/8/8/8/6Q1/7K b - - 12 63"
+		// "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+		"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 		;
 
 	ChessEngine = std::make_unique<::ChessEngine>(FENPosition);

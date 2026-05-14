@@ -51,7 +51,8 @@ enum SpecialMoveType
 {
 	None,
 	PawnPromotion,
-	PossibleEnpassant,
+	PawnPromotionCapture,
+	PawnDoublePush,
 	Capture,
 	Castle,
 };
@@ -60,33 +61,47 @@ struct SpecialMove
 {
 	SimpleMove Move;
 
-	// if it's a capture then Move will be the capturing piece's move and OtherPieceMove will be the captured piece's move with NewSquare set to -1
-	// if it's a castle then Move will be the king's move and OtherPieceMove will be the rook's move
-
 	SpecialMoveType Type;
 	SimpleMove OtherPieceMove;
 
-	Piece* MovedPiece;
-	Piece* CapturedPiece;
-	Piece* CastledRook;
+	int EnpassantSquare = -1;
+
+	Piece* MovedPiece = nullptr;
+	Piece* CapturedPiece = nullptr;
+	Piece* CastledRook = nullptr;
+
+	PieceType PromotedPieceType = Null;
+	bool bIsEnpassant = false;
 
 	SpecialMove()
-		: Move(), Type(None), OtherPieceMove(), MovedPiece(nullptr), CapturedPiece(nullptr), CastledRook(nullptr)
+		: Move(), Type(None), OtherPieceMove()
 	{}
 
 	SpecialMove(SimpleMove InMove, SpecialMoveType InType, SimpleMove InOtherPieceMove)
-		: Move(InMove), Type(InType), OtherPieceMove(InOtherPieceMove), MovedPiece(nullptr), CapturedPiece(nullptr), CastledRook(nullptr)
+		: Move(InMove), Type(InType), OtherPieceMove(InOtherPieceMove)
 	{}
 
-	const bool IsValid() const // invalid moves (squares are -1)
+	const bool IsValid() const
 	{
-		bool bIsValid = Move.OldSquare != -1 && Move.NewSquare != -1;
+		bool bIsValid = Move.IsValid() && MovedPiece;
 
-		if (Type == Capture)
+		if (Type == PawnPromotion)
 		{
-			bIsValid = bIsValid && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1;
+			bIsValid = bIsValid && MovedPiece->Type == Pawn /* && PromotedPieceType != Null */;
 		}
-		else if (Type != None && Type != PawnPromotion)
+		else if (Type == PawnPromotionCapture)
+		{
+			bIsValid = bIsValid && MovedPiece->Type == Pawn /* && PromotedPieceType != Null */ && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1 && CapturedPiece;
+		}
+		else if (Type == PawnDoublePush)
+		{
+			bIsValid = bIsValid && EnpassantSquare != -1;
+		}
+		else if (Type == Capture)
+		{
+			bIsValid = bIsValid && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1 && CapturedPiece;
+		}
+		else if (Type == Castle)
 		{
 			bIsValid = bIsValid && OtherPieceMove.IsValid();
 		}
@@ -94,7 +109,7 @@ struct SpecialMove
 		return bIsValid;
 	}
 
-	const bool IsZero() const // old square and new square are the same
+	const bool IsZero() const // old square is the same as new square and type is None
 	{
 		return Move.OldSquare == Move.NewSquare && Type == None;
 	}
@@ -108,4 +123,10 @@ struct SpecialMove
 	{
 		*this = SpecialMove{};
 	}
+};
+
+struct ScoredMove
+{
+	SpecialMove Move;
+	int Score;
 };

@@ -37,6 +37,7 @@
     <ClCompile Include="Piece.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Transposition.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Gui.h">
@@ -55,6 +56,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Move.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Transposition.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
