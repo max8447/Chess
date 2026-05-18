@@ -153,6 +153,7 @@
     <ClCompile Include="..\vendor\imgui\imgui_tables.cpp" />
     <ClCompile Include="..\vendor\imgui\imgui_widgets.cpp" />
     <ClCompile Include="..\vendor\imgui\misc\cpp\imgui_stdlib.cpp" />
+    <ClCompile Include="Bitboard.cpp" />
     <ClCompile Include="ChessEngine.cpp" />
     <ClCompile Include="Gui.cpp" />
     <ClCompile Include="main.cpp" />
@@ -160,6 +161,7 @@
     <ClCompile Include="Transposition.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Bitboard.h" />
     <ClInclude Include="ChessEngine.h" />
     <ClInclude Include="Gui.h" />
     <ClInclude Include="ImageHelper.h" />

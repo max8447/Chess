@@ -1,57 +1,21 @@
 #include "Piece.h"
 
-int Piece::GetDirection() const
-{
-	return Color == White ? 1 : -1;
-}
-
-std::pair<int, int> Piece::GetRankFile(int Square) const
-{
-	if (Square == -1)
-	{
-		Square = this->Square;
-	}
-
-	const auto [Rank, File] = SquareToRankFile(Square);
-
-	if (Color == Black)
-	{
-		return { 7 - Rank, 7 - File }; // rotate by 180 degrees
-	}
-	else
-	{
-		return { Rank, File };
-	}
-}
-
-int Piece::GetSquare(int Rank, int File) const
-{
-	if (Rank == -1 || File == -1)
-	{
-		const auto [OwnRank, OwnFile] = SquareToRankFile(Square);
-
-		Rank = OwnRank;
-		File = OwnFile;
-	}
-
-	if (Color == Black)
-	{
-		// rotate by 180 degrees
-
-		Rank = 7 - Rank;
-		File = 7 - File;
-	}
-
-	return RankFileToSquare(Rank, File);
-}
-
 bool Piece::IsAllowedMove(int NewSquare) const
 {
 	std::array<int, 9> AllowedMoves = GetAvailableMoves(Type);
 
-	const auto [OldRank, OldFile] = GetRankFile();
-	const auto [NewRank, NewFile] = GetRankFile(NewSquare);
+	auto [OldRank, OldFile] = Piece::SquareToRankFile(Square);
+	auto [NewRank, NewFile] = Piece::SquareToRankFile(NewSquare);
 	
+	if (Color == Black)
+	{
+		OldRank = 7 - OldRank;
+		OldFile = 7 - OldFile;
+
+		NewRank = 7 - NewRank;
+		NewFile = 7 - NewFile;
+	}
+
 	int DeltaRank = NewRank - OldRank;
 	int DeltaFile = NewFile - OldFile;
 
@@ -109,7 +73,7 @@ bool Piece::IsAllowedMove(int NewSquare) const
 
 		if (DeltaRank != DeltaFile)
 		{
-			return false; // diagonal moves will always be at a 45 degree angle (except for knight)
+			return false; // diagonal moves that are not knight will always be at a 45 degree angle
 		}
 
 		return DeltaRank <= AllowedSquares;

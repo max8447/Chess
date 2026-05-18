@@ -104,8 +104,11 @@ void Gui::InitializeGui()
 	// https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation
 
 	const char* FENPosition =
-		// "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-		"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+		// "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
+		// "rnbqkbnr/pppppppp/pppppppp/8/8/PPPPPPPP/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+		// "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+		// "3k4/1b3b2/2q1r3/8/4R3/3Q4/2B2B2/4K3 w - - 0 1"
 		;
 
 	ChessEngine = std::make_unique<::ChessEngine>(FENPosition);
@@ -115,6 +118,7 @@ void Gui::ShutdownGui()
 {
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
+
 	ImGui::DestroyContext();
 
 	glfwDestroyWindow(GLFWWindow);

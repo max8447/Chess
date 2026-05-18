@@ -26,10 +26,10 @@ struct TranspositionTable
 	ZobrishEntry* Entries;
 	size_t Count;
 
-	uint64_t PieceKeys[PieceType_Count * 2][64];
+	uint64_t PieceKeys[PieceType_Count * PieceColor_Count][AlgebraicSquare_Count];
 	uint64_t SideToMoveKey;
 	uint64_t CastlingKeys[16];
-	uint64_t EnpassantKeys[64];
+	uint64_t EnpassantKeys[AlgebraicSquare_Count];
 
 	TranspositionTable(int MegaBytes);
 	~TranspositionTable();

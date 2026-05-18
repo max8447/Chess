@@ -35,7 +35,7 @@ void TranspositionTable::Init()
 {
 	for (int Piece = 0; Piece < ARRAY_LEN(PieceKeys); Piece++)
 	{
-		for (int Square = 0; Square < 64; Square++)
+		for (int Square = 0; Square < ARRAY_LEN(PieceKeys[Piece]); Square++)
 		{
 			PieceKeys[Piece][Square] = Rand64();
 		}

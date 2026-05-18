@@ -17,15 +17,6 @@ struct SimpleMove
 		: OldSquare(InOldSquare), NewSquare(InNewSquare)
 	{}
 
-	SimpleMove(const char* AlgebraicOldSquare, const char* AlgebraicNewSquare) // no safety guaranteed
-	{
-		std::array<char, 2> OldSquareArray = { AlgebraicOldSquare[0], AlgebraicOldSquare[1] };
-		std::array<char, 2> NewSquareArray = { AlgebraicNewSquare[0], AlgebraicNewSquare[1] };
-
-		OldSquare = Piece::RankFileToSquare(Piece::AlgebraicToRankFile(OldSquareArray));
-		NewSquare = Piece::RankFileToSquare(Piece::AlgebraicToRankFile(NewSquareArray));
-	}
-
 	const bool IsValid() const // invalid moves (squares are -1)
 	{
 		return OldSquare != -1 && NewSquare != -1;
@@ -49,13 +40,14 @@ struct SimpleMove
 
 enum SpecialMoveType
 {
-	None,
-	PawnPromotion,
-	PawnPromotionCapture,
-	PawnDoublePush,
-	Capture,
-	Castle,
+	None					= 0,
+	Capture					= 1 << 1,
+	Castle					= 1 << 2,
+	PawnPromotion			= 1 << 3,
+	PawnDoublePush			= 1 << 4,
 };
+
+ENUM_OPERATORS(SpecialMoveType);
 
 struct SpecialMove
 {
@@ -85,25 +77,24 @@ struct SpecialMove
 	{
 		bool bIsValid = Move.IsValid() && MovedPiece;
 
-		if (Type == PawnPromotion)
+		if (Type & Castle)
 		{
-			bIsValid = bIsValid && MovedPiece->Type == Pawn /* && PromotedPieceType != Null */;
+			bIsValid = bIsValid && OtherPieceMove.IsValid();
 		}
-		else if (Type == PawnPromotionCapture)
-		{
-			bIsValid = bIsValid && MovedPiece->Type == Pawn /* && PromotedPieceType != Null */ && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1 && CapturedPiece;
-		}
-		else if (Type == PawnDoublePush)
-		{
-			bIsValid = bIsValid && EnpassantSquare != -1;
-		}
-		else if (Type == Capture)
+
+		if (Type & Capture)
 		{
 			bIsValid = bIsValid && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1 && CapturedPiece;
 		}
-		else if (Type == Castle)
+
+		if (Type & PawnPromotion)
 		{
-			bIsValid = bIsValid && OtherPieceMove.IsValid();
+			bIsValid = bIsValid && MovedPiece->Type == Pawn /* && PromotedPieceType != Null */;
+		}
+
+		if (Type & PawnDoublePush)
+		{
+			bIsValid = bIsValid && EnpassantSquare != -1;
 		}
 
 		return bIsValid;

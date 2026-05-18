@@ -27,7 +27,9 @@ constexpr int PieceValues[] = { // has to match ordering of enum above
 enum PieceColor : uint8_t
 {
 	White,
-	Black
+	Black,
+
+	PieceColor_Count,
 };
 
 enum AlgebraicSquare : uint8_t
@@ -40,6 +42,8 @@ enum AlgebraicSquare : uint8_t
 	a6, b6, c6, d6, e6, f6, g6, h6,
 	a7, b7, c7, d7, e7, f7, g7, h7,
 	a8, b8, c8, d8, e8, f8, g8, h8,
+
+	AlgebraicSquare_Count,
 };
 
 struct Piece
@@ -64,10 +68,6 @@ struct Piece
 	{
 	}
 
-	int GetDirection() const;
-	std::pair<int, int> GetRankFile(int Square = -1) const;
-	int GetSquare(int Rank = -1, int File = -1) const;
-
 	bool IsAllowedMove(int NewSquare) const;
 
 	static constexpr std::array<int, 9> GetAvailableMoves(PieceType Type);
@@ -80,7 +80,7 @@ struct Piece
 	static constexpr std::array<char, 3> SquareToAlgebraic(int Square);
 	static constexpr std::array<char, 3> RankFileToAlgebraic(std::pair<int, int> RankFile);
 
-	static constexpr std::pair<int, int> AlgebraicToRankFile(std::array<char, 2> Algebraic); // no safety guaranteed
+	static constexpr std::pair<int, int> AlgebraicToRankFile(const std::array<char, 2>& Algebraic); // no safety guaranteed
 
 	static constexpr std::pair<int, int> RotateCW(std::pair<int, int> RankFile);	// only use in graphic contexts
 	static constexpr std::pair<int, int> RotateCCW(std::pair<int, int> RankFile);	// only use in graphic contexts
@@ -129,7 +129,7 @@ constexpr std::array<char, 3> Piece::RankFileToAlgebraic(std::pair<int, int> Ran
 	};
 }
 
-constexpr std::pair<int, int> Piece::AlgebraicToRankFile(std::array<char, 2> Algebraic)
+constexpr std::pair<int, int> Piece::AlgebraicToRankFile(const std::array<char, 2>& Algebraic)
 {
 	return std::pair{ Algebraic[0] - 'a', Algebraic[1] - '1' };
 }

@@ -5,20 +5,29 @@
 #include "Piece.h"
 #include "Move.h"
 #include "Transposition.h"
+#include "Bitboard.h"
 
 #define SEARCHBESTMOVE_MIN -999999
 #define SEARCHBESTMOVE_MAX 999999
 
 struct CastlingRights
 {
-	SpecialMove KingSide[2] = {
+	SpecialMove KingSide[PieceColor_Count] = {
 		SpecialMove{ { e1, g1 }, Castle, { h1, f1 } },	// white
 		SpecialMove{ { e8, g8 }, Castle, { h8, f8 } },	// black
 	};
-	SpecialMove QueenSide[2] = {
+	SpecialMove QueenSide[PieceColor_Count] = {
 		SpecialMove{ { e1, c1 }, Castle, { a1, d1 } },	// white
 		SpecialMove{ { e8, c8 }, Castle, { a8, d8 } },	// black
 	};
+
+	void Invalidate()
+	{
+		KingSide[0].Invalidate();
+		KingSide[1].Invalidate();
+		QueenSide[0].Invalidate();
+		QueenSide[1].Invalidate();
+	}
 };
 
 class ChessEngine
@@ -52,10 +61,15 @@ private:
 	mutable uint64_t CurrentHash;
 	mutable TranspositionTable TranspositionTable;
 
+	mutable Bitboard Bitboard;
+	Attacks Attacks;
+
 	// TODO: make these selectable
 	
 	PieceColor PlayerColor = White;
 	PieceColor BotColor = Black;
+
+	bool bEnableBot = true;
 
 	mutable int MoveGenerationTestPossibleMoves = -1;
 
@@ -66,10 +80,13 @@ private:
 public:
 
 	ChessEngine(const char* FENString);
+	~ChessEngine();
 
 	// expects valid FEN string (no validity checking done)
-	void LoadFENPosition(const char* FENString);
+	void LoadFENPosition(const char* InFENString);
 	char* GenerateFENPosition();
+
+	void InitBitboard();
 
 private:
 
@@ -101,7 +118,11 @@ private:
 	void MakeMove(const SpecialMove& Move, CastlingRights* OutCastlingRights = nullptr, int* OutEnpassantSquare = nullptr, uint64_t* OutHash = nullptr) const;
 	void UnMakeMove(const SpecialMove& Move) const;
 
+	void MakeBitboardsMove(const SpecialMove& Move) const;
+	void UnMakeBitboardsMove(const SpecialMove& Move) const;
+
 	bool IsInCheck(PieceColor Color) const;
+	bool IsAttacked(int AttackedSquare, PieceColor Color) const;
 	bool IsAttacked(Piece* AttackedPiece) const;
 
 	// universal move-making functions
@@ -137,8 +158,6 @@ private:
 
 	Piece* GetPiece(int Rank, int File) const;
 	Piece* GetPiece(int Square) const;
-
-	Piece* GetFirstPiece(PieceType Type, PieceColor Color) const;
 
 	int GetSquare(const ImVec2& Pos) const;
 
