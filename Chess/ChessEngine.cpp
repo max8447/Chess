@@ -14,9 +14,13 @@
 #define COL_PAWNPROMOTION_BG IM_COL32_WHITE
 #define COL_ENDSCREEN_OVERLAY IM_COL32(0, 0, 0, 127)
 
+#ifdef MAX_SPEED
+#define DO_SQUARES_CHECK()
+#else // MAX_SPEED
 #define DO_SQUARES_CHECK()														\
 	for (const auto& Piece : Pieces)											\
 		if (Piece->Square != -1) ASSERT(Squares[Piece->Square] == Piece.get());
+#endif // MAX_SPEED
 
 constexpr bool bDoMoveGenerationTest = false;
 constexpr int MoveGenerationDepth = 5;
@@ -242,8 +246,8 @@ void ChessEngine::LoadFENPosition(const char* InFENString)
 
 	InitBitboard();
 
-	int WhiteKingSquare = std::countr_zero(Bitboard.Pieces[White][King]);
-	int BlackKingSquare = std::countr_zero(Bitboard.Pieces[Black][King]);
+	const int WhiteKingSquare = std::countr_zero(Bitboard.Pieces[White][King]);
+	const int BlackKingSquare = std::countr_zero(Bitboard.Pieces[Black][King]);
 
 	ASSERT(Squares[WhiteKingSquare] && "No white king on board!");
 	ASSERT(Squares[BlackKingSquare] && "No black king on board!");

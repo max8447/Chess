@@ -38,11 +38,21 @@ inline bool operator>=(const ImVec2& other) const { return x >= other.x && y >= 
 #define ARRAY_LEN(arr) (sizeof(arr) / sizeof(*(arr)))
 #define INT3 __debugbreak()
 
+// #define MAX_SPEED
+
+#if defined(_DEBUG) && defined(MAX_SPEED)
+#error MAX_SPEED can't be enabled when in debug configuration!
+#endif
+
 #ifdef _DEBUG
 #define ASSERT(cond, ...) IM_ASSERT(cond)
-#else
+#else // _DEBUG
+#ifdef MAX_SPEED
+#define ASSERT(...)
+#else // MAX_SPEED
 #define ASSERT(cond, returnvalue) if (!(cond)) { INT3; return returnvalue; }
-#endif
+#endif // MAX_SPEED
+#endif // _DEBUG
 
 #define ENUM_OPERATORS(EEnumClass)																																		\
 																																										\
