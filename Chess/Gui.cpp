@@ -105,10 +105,8 @@ void Gui::InitializeGui()
 
 	const char* FENPosition =
 		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-		// "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
-		// "rnbqkbnr/pppppppp/pppppppp/8/8/PPPPPPPP/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+		// "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 "
 		// "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
-		// "3k4/1b3b2/2q1r3/8/4R3/3Q4/2B2B2/4K3 w - - 0 1"
 		;
 
 	ChessEngine = std::make_unique<::ChessEngine>(FENPosition);

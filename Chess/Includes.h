@@ -29,6 +29,7 @@ inline bool operator>=(const ImVec2& other) const { return x >= other.x && y >= 
 #include <algorithm>
 #include <random>
 #include <chrono>
+#include <map>
 #include <unordered_set>
 #include <execution>
 #include <cstdint>
@@ -45,20 +46,22 @@ inline bool operator>=(const ImVec2& other) const { return x >= other.x && y >= 
 
 #define ENUM_OPERATORS(EEnumClass)																																		\
 																																										\
-inline constexpr EEnumClass operator|(EEnumClass Left, EEnumClass Right)																								\
+inline constexpr EEnumClass& operator&=(EEnumClass& Left, EEnumClass Right)																								\
 {																																										\
-	return (EEnumClass)((std::underlying_type<EEnumClass>::type)(Left) | (std::underlying_type<EEnumClass>::type)(Right));												\
+	return (EEnumClass&)((std::underlying_type<EEnumClass>::type&)(Left) &= (std::underlying_type<EEnumClass>::type)(Right));											\
 }																																										\
-																																										\
 inline constexpr EEnumClass& operator|=(EEnumClass& Left, EEnumClass Right)																								\
 {																																										\
 	return (EEnumClass&)((std::underlying_type<EEnumClass>::type&)(Left) |= (std::underlying_type<EEnumClass>::type)(Right));											\
 }																																										\
-																																										\
-inline bool operator&(EEnumClass Left, EEnumClass Right)																												\
+inline constexpr EEnumClass& operator&=(EEnumClass& Left, int Right)																									\
 {																																										\
-	return (((std::underlying_type<EEnumClass>::type)(Left) & (std::underlying_type<EEnumClass>::type)(Right)) == (std::underlying_type<EEnumClass>::type)(Right));		\
-}																																										
+	return (EEnumClass&)((std::underlying_type<EEnumClass>::type&)(Left) &= Right);																						\
+}																																										\
+inline constexpr EEnumClass& operator|=(EEnumClass& Left, int Right)																									\
+{																																										\
+	return (EEnumClass&)((std::underlying_type<EEnumClass>::type&)(Left) |= Right);																						\
+}
 
 // https://stackoverflow.com/questions/72336579/good-way-of-popping-the-least-signifigant-bit-and-returning-the-index
 static int pop_lsb(uint64_t& b)

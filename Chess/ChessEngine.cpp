@@ -14,7 +14,12 @@
 #define COL_PAWNPROMOTION_BG IM_COL32_WHITE
 #define COL_ENDSCREEN_OVERLAY IM_COL32(0, 0, 0, 127)
 
+#define DO_SQUARES_CHECK()														\
+	for (const auto& Piece : Pieces)											\
+		if (Piece->Square != -1) ASSERT(Squares[Piece->Square] == Piece.get());
+
 constexpr bool bDoMoveGenerationTest = false;
+constexpr int MoveGenerationDepth = 5;
 
 ChessEngine::ChessEngine(const char* FENString)
 	: SelectedPiece(nullptr), TranspositionTable(1)
@@ -54,7 +59,7 @@ void ChessEngine::LoadFENPosition(const char* InFENString)
 	bGameEnded = false;
 
 	CurrentMove = White;
-	AvailableCastlingRights.Invalidate();
+	AvailableCastlingRights = NoCastling; // allow all, then disable
 	EnpassantSquare = -1;
 	PawnPromotionSquare = -1;
 	HalfMoveClock = 0;
@@ -100,11 +105,7 @@ void ChessEngine::LoadFENPosition(const char* InFENString)
 		{
 			if (!bSetupCastling)
 			{
-				AvailableCastlingRights.KingSide[0].Invalidate();
-				AvailableCastlingRights.KingSide[1].Invalidate();
-
-				AvailableCastlingRights.QueenSide[0].Invalidate();
-				AvailableCastlingRights.QueenSide[1].Invalidate();
+				AvailableCastlingRights = NoCastling;
 
 				bSetupCastling = true;
 			}
@@ -183,7 +184,7 @@ void ChessEngine::LoadFENPosition(const char* InFENString)
 
 				int Square = Piece::RankFileToSquare(CurrentRank, CurrentFile++);
 
-				Pieces.push_back(std::make_unique<Piece>(Square, Type, Color));
+				Squares[Square] = Pieces.emplace_back(std::make_unique<Piece>(Square, Type, Color)).get();
 			}
 			else if (!bSetupCurrentMove)
 			{
@@ -195,38 +196,28 @@ void ChessEngine::LoadFENPosition(const char* InFENString)
 			}
 			else if (!bSetupCastling)
 			{
-				bool KingSideEnabled[2] = { false, false };
-				bool QueenSideEnabled[2] = { false, false };
-
 				InFENString--;
 
 				while (!isspace(c = *InFENString++))
 				{
 					PieceColor Color = isupper(c) ? White : Black;
 
-					switch (tolower(c))
+					switch (c)
 					{
+					case 'K':
+						AvailableCastlingRights |= WhiteKingSide;
+						break;
+					case 'Q':
+						AvailableCastlingRights |= WhiteQueenSide;
+						break;
 					case 'k':
-						KingSideEnabled[Color] = true;
+						AvailableCastlingRights |= BlackKingSide;
 						break;
 					case 'q':
-						QueenSideEnabled[Color] = true;
+						AvailableCastlingRights |= BlackQueenSide;
 						break;
 					default:
 						ASSERT(false);
-						break;
-					}
-				}
-
-				for (int i = 0; i < 2; i++)
-				{
-					if (!KingSideEnabled[i])
-					{
-						AvailableCastlingRights.KingSide[i].Invalidate();
-					}
-					if (!QueenSideEnabled[i])
-					{
-						AvailableCastlingRights.QueenSide[i].Invalidate();
 					}
 				}
 
@@ -251,21 +242,30 @@ void ChessEngine::LoadFENPosition(const char* InFENString)
 
 	InitBitboard();
 
+	int WhiteKingSquare = std::countr_zero(Bitboard.Pieces[White][King]);
+	int BlackKingSquare = std::countr_zero(Bitboard.Pieces[Black][King]);
+
+	ASSERT(Squares[WhiteKingSquare] && "No white king on board!");
+	ASSERT(Squares[BlackKingSquare] && "No black king on board!");
+
+	DO_SQUARES_CHECK();
+
 	printf("fen pos: %s\n", GenerateFENPosition());
 }
 
-char* ChessEngine::GenerateFENPosition()
+char* ChessEngine::GenerateFENPosition() const
 {
-	constexpr size_t MaxFENSize = 3490;
+	constexpr size_t MaxFENSize = 90; // QQQQQQQQ/QQQQQQQQ/QQQQQQQQ/QQQQQQQQ/QQQQQQQQ/QQQQQQQQ/QQQQQQQQ/QQQQQQQQ w KQkq 63 999 999
 
-	char Buf[MaxFENSize] = { 0 };
+	char* Buf = new char[MaxFENSize];
 	int Idx = 0;
 
 	for (int Rank = 7; Rank >= 0; Rank--)
 	{
 		for (int File = 0; File < 8; File++)
 		{
-			Piece* Piece = GetPiece(Rank, File);
+			int Square = Piece::RankFileToSquare(Rank, File);
+			Piece* Piece = GetPiece(Square);
 
 			if (Piece)
 			{
@@ -319,22 +319,22 @@ char* ChessEngine::GenerateFENPosition()
 
 	bool bHasCastlingRights = false;
 
-	if (AvailableCastlingRights.KingSide[White].Move.IsAllowed())
+	if (AvailableCastlingRights & WhiteKingSide)
 	{
 		bHasCastlingRights = true;
 		Buf[Idx++] = 'K';
 	}
-	if (AvailableCastlingRights.QueenSide[White].Move.IsAllowed())
+	if (AvailableCastlingRights & WhiteQueenSide)
 	{
 		bHasCastlingRights = true;
 		Buf[Idx++] = 'Q';
 	}
-	if (AvailableCastlingRights.KingSide[Black].Move.IsAllowed())
+	if (AvailableCastlingRights & BlackKingSide)
 	{
 		bHasCastlingRights = true;
 		Buf[Idx++] = 'k';
 	}
-	if (AvailableCastlingRights.QueenSide[Black].Move.IsAllowed())
+	if (AvailableCastlingRights & BlackQueenSide)
 	{
 		bHasCastlingRights = true;
 		Buf[Idx++] = 'q';
@@ -368,7 +368,7 @@ char* ChessEngine::GenerateFENPosition()
 
 		size_t NumBufLen = strlen(NumBuf);
 		memcpy(Buf + Idx, NumBuf, NumBufLen);
-		Idx += NumBufLen;
+		Idx += (int)NumBufLen;
 	}
 
 	Buf[Idx++] = ' ';
@@ -380,7 +380,7 @@ char* ChessEngine::GenerateFENPosition()
 
 		size_t NumBufLen = strlen(NumBuf);
 		memcpy(Buf + Idx, NumBuf, NumBufLen);
-		Idx += NumBufLen;
+		Idx += (int)NumBufLen;
 	}
 
 	Buf[Idx++] = '\0';
@@ -448,19 +448,6 @@ void ChessEngine::GetAllAvailableMoves(PieceColor Color, std::vector<SpecialMove
 	}
 }
 
-void ChessEngine::GetAllAvailableMoves(PieceColor Color, SpecialMove* OutAvailableMoves, int& OutAvailableMovesCount, bool bAllowPseudolegalMoves) const
-{
-	ASSERT(OutAvailableMoves);
-
-	for (const auto& Piece : Pieces)
-	{
-		if (Piece->Color == Color && Piece->Square != -1)
-		{
-			GetAvailableMoves(Piece.get(), OutAvailableMoves, OutAvailableMovesCount, bAllowPseudolegalMoves);
-		}
-	}
-}
-
 void ChessEngine::GetScoredMoves(Piece* TargetPiece, std::vector<ScoredMove>* OutScoredMoves, bool bAllowPseudolegalMoves) const
 {
 	ASSERT(TargetPiece && OutScoredMoves);
@@ -474,15 +461,21 @@ void ChessEngine::GetScoredMoves(Piece* TargetPiece, std::vector<ScoredMove>* Ou
 			{
 				if (OutSpecialMove.Type & PawnPromotion)
 				{
-					for (PieceType Type = Queen; Type < Pawn; Type = (PieceType)(Type + 1))
-					{
-						OutSpecialMove.PromotedPieceType = Type;
-						OutScoredMoves->push_back({ .Move = OutSpecialMove, .Score = GuessMoveScore(OutSpecialMove) });
-					}
+					OutSpecialMove.ExtraInfo.PromotedPieceType = Knight;
+					OutScoredMoves->push_back({ .Move = OutSpecialMove, .Score = GuessMoveScore(OutSpecialMove) });
+
+					OutSpecialMove.ExtraInfo.PromotedPieceType = Bishop;
+					OutScoredMoves->push_back({ .Move = OutSpecialMove, .Score = GuessMoveScore(OutSpecialMove) });
+
+					OutSpecialMove.ExtraInfo.PromotedPieceType = Rook;
+					OutScoredMoves->push_back({ .Move = OutSpecialMove, .Score = GuessMoveScore(OutSpecialMove) });
+
+					OutSpecialMove.ExtraInfo.PromotedPieceType = Queen;
+					OutScoredMoves->push_back({ .Move = OutSpecialMove, .Score = GuessMoveScore(OutSpecialMove) });
 				}
 				else
 				{
-					OutScoredMoves->push_back({ .Move = OutSpecialMove, .Score = GuessMoveScore(OutSpecialMove) });
+					OutScoredMoves->push_back(std::move<ScoredMove>({ .Move = OutSpecialMove, .Score = GuessMoveScore(OutSpecialMove) }));
 				}
 			}
 
@@ -503,21 +496,21 @@ void ChessEngine::GetAvailableMoves(Piece* TargetPiece, std::vector<SpecialMove>
 			{
 				if (OutSpecialMove.Type & PawnPromotion)
 				{
-					OutSpecialMove.PromotedPieceType = Knight;
+					OutSpecialMove.ExtraInfo.PromotedPieceType = Knight;
 					OutAvailableMoves->push_back(OutSpecialMove);
 
-					OutSpecialMove.PromotedPieceType = Bishop;
+					OutSpecialMove.ExtraInfo.PromotedPieceType = Bishop;
 					OutAvailableMoves->push_back(OutSpecialMove);
 
-					OutSpecialMove.PromotedPieceType = Rook;
+					OutSpecialMove.ExtraInfo.PromotedPieceType = Rook;
 					OutAvailableMoves->push_back(OutSpecialMove);
 
-					OutSpecialMove.PromotedPieceType = Queen;
+					OutSpecialMove.ExtraInfo.PromotedPieceType = Queen;
 					OutAvailableMoves->push_back(OutSpecialMove);
 				}
 				else
 				{
-					OutAvailableMoves->push_back(OutSpecialMove);
+					OutAvailableMoves->push_back(std::move(OutSpecialMove));
 				}
 			}
 
@@ -525,33 +518,121 @@ void ChessEngine::GetAvailableMoves(Piece* TargetPiece, std::vector<SpecialMove>
 		});
 }
 
-void ChessEngine::GetAvailableMoves(Piece* TargetPiece, SpecialMove* OutAvailableMoves, int& OutAvailableMovesCount, bool bAllowPseudolegalMoves) const
+void ChessEngine::GeneratePawnMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const
 {
-	ASSERT(TargetPiece && OutAvailableMoves);
 
-	IterateSquares([&OutAvailableMoves, &OutAvailableMovesCount, TargetPiece, bAllowPseudolegalMoves, this](const ImVec2& Min, const ImVec2& Max, int Rank, int File) -> bool
+}
+
+void ChessEngine::GenerateKnightMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const
+{
+	PieceColor OpponentColor = (PieceColor)(1 - Color);
+
+	uint64_t KnightsBitboard = Bitboard.Pieces[Color][Knight];
+
+	while (KnightsBitboard)
+	{
+		int KnightSquare = pop_lsb(KnightsBitboard);
+
+		const uint64_t LegalSquaresBitboard = ~Bitboard.Occupied[Color]; // todo: pins
+		uint64_t KnightMovesBitboard = Attacks.KnightAttacks[KnightSquare] & LegalSquaresBitboard;
+
+		while (KnightMovesBitboard)
 		{
-			int Square = Piece::RankFileToSquare(Rank, File);
+			int MoveSquare = pop_lsb(KnightMovesBitboard);
 
-			SpecialMove OutSpecialMove;
-			if (IsAllowedMove(TargetPiece, Square, bAllowPseudolegalMoves, &OutSpecialMove) && OutSpecialMove.IsAllowed())
+			if (IsBitSet(Bitboard.Occupied[OpponentColor], MoveSquare))
 			{
-				if (OutSpecialMove.Type & PawnPromotion)
-				{
-					for (PieceType Type = Queen; Type < Pawn; Type = (PieceType)(Type + 1))
-					{
-						OutSpecialMove.PromotedPieceType = Type;
-						OutAvailableMoves[OutAvailableMovesCount++] = OutSpecialMove;
-					}
-				}
-				else
-				{
-					OutAvailableMoves[OutAvailableMovesCount++] = OutSpecialMove;
-				}
+				OutAvailableMoves->emplace_back(SimpleMove{ KnightSquare, MoveSquare }, Capture, SimpleMove{ MoveSquare, -1 });
 			}
+			else
+			{
+				OutAvailableMoves->emplace_back(SimpleMove{ KnightSquare, MoveSquare });
+			}
+		}
+	}
+}
 
-			return true;
-		});
+void ChessEngine::GenerateBishopMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const
+{
+
+}
+
+void ChessEngine::GenerateRookMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const
+{
+
+}
+
+void ChessEngine::GenerateQueenMoves(PieceColor Color, std::vector<SpecialMove>*OutAvailableMoves) const
+{
+
+}
+
+void ChessEngine::GenerateKingMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const
+{
+	PieceColor OpponentColor = (PieceColor)(1 - Color);
+
+	int KingSquare = std::countr_zero(Bitboard.Pieces[Color][King]); // there is ever only one king per color
+
+	const uint64_t LegalSquaresBitboard = ~Bitboard.Occupied[Color];
+	uint64_t KingMovesBitboard = Attacks.KingAttacks[KingSquare] & LegalSquaresBitboard;
+
+	while (KingMovesBitboard)
+	{
+		int MoveSquare = pop_lsb(KingMovesBitboard);
+
+		if (!IsAttacked(MoveSquare, OpponentColor))
+		{
+			OutAvailableMoves->emplace_back(SimpleMove{ KingSquare, MoveSquare });
+		}
+	}
+
+	CastlingRights KingSideRights = Color == White ? WhiteKingSide : BlackKingSide;
+	CastlingRights QueenSideRights = Color == White ? WhiteQueenSide : BlackQueenSide;
+
+	if (AvailableCastlingRights & KingSideRights)
+	{
+		const SpecialMove& KingSideCastle = StaticCastlingRights::KingSide[Color];
+
+		int KingSideKingNewSquare = KingSideCastle.Move.NewSquare;
+		int KingSideRookNewSquare = KingSideCastle.OtherPieceMove.NewSquare;
+
+		if (!IsBitSet(Bitboard.AllOccupied, KingSideKingNewSquare) && !IsBitSet(Bitboard.AllOccupied, KingSideRookNewSquare) &&
+			!IsAttacked(KingSideKingNewSquare, OpponentColor) && !IsAttacked(KingSideRookNewSquare, OpponentColor))
+		{
+			OutAvailableMoves->emplace_back(SimpleMove{ KingSquare, KingSideKingNewSquare }, Castle, KingSideCastle.OtherPieceMove);
+		}
+	}
+
+	if (AvailableCastlingRights & QueenSideRights)
+	{
+		const SpecialMove& QueenSideCastle = StaticCastlingRights::QueenSide[Color];
+
+		int QueenSideKingNewSquare = QueenSideCastle.Move.NewSquare;
+		int QueenSideRookNewSquare = QueenSideCastle.OtherPieceMove.NewSquare;
+		int QueenSideBetweenSquare = QueenSideKingNewSquare - 1;
+		
+		if (!IsBitSet(Bitboard.AllOccupied, QueenSideKingNewSquare) && !IsBitSet(Bitboard.AllOccupied, QueenSideRookNewSquare) && !IsBitSet(Bitboard.AllOccupied, QueenSideBetweenSquare) &&
+			!IsAttacked(QueenSideKingNewSquare, OpponentColor) && !IsAttacked(QueenSideRookNewSquare, OpponentColor) && !IsAttacked(QueenSideBetweenSquare, OpponentColor))
+		{
+			int NewKingSquare = QueenSideCastle.Move.NewSquare;
+
+			OutAvailableMoves->emplace_back(SimpleMove{ KingSquare, NewKingSquare }, Castle, QueenSideCastle.OtherPieceMove);
+		}
+	}
+}
+
+void ChessEngine::GenerateLegalMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const
+{
+	ASSERT(OutAvailableMoves);
+
+	GenerateKingMoves(Color, OutAvailableMoves);
+
+	GeneratePawnMoves(Color, OutAvailableMoves);
+	GenerateKnightMoves(Color, OutAvailableMoves);
+
+	GenerateBishopMoves(Color, OutAvailableMoves);
+	GenerateRookMoves(Color, OutAvailableMoves);
+	GenerateQueenMoves(Color, OutAvailableMoves);
 }
 
 void ChessEngine::CalculatePossibleMoves()
@@ -578,13 +659,12 @@ void ChessEngine::CalculatePossibleMoves()
 
 		steady_clock::time_point MoveGenerationTestStart = high_resolution_clock::now();
 
-		int Depth = 6;
-		MoveGenerationTestPossibleMoves = MoveGenerationTest(CurrentMove, Depth, true);
+		MoveGenerationTestPossibleMoves = MoveGenerationTest(CurrentMove, MoveGenerationDepth, true);
 
 		steady_clock::time_point MoveGenerationTestEnd = high_resolution_clock::now();
 		milliseconds MoveGenerationTestDuration = duration_cast<milliseconds>(MoveGenerationTestEnd - MoveGenerationTestStart);
 
-		printf("Nodes searched at depth %d: %d\n", Depth, MoveGenerationTestPossibleMoves);
+		printf("Nodes searched at depth %d: %llu\n", MoveGenerationDepth, MoveGenerationTestPossibleMoves);
 		printf("MoveGenerationTest took %lld ms\n", MoveGenerationTestDuration.count());
 	}
 }
@@ -592,7 +672,7 @@ void ChessEngine::CalculatePossibleMoves()
 bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPseudolegal, SpecialMove* OutSpecialMove) const
 {
 	ASSERT(MovingPiece && OutSpecialMove, false);
-	ASSERT(NewSquare >= 0 && NewSquare <= 63, false);
+	ASSERT((uint8_t)NewSquare <= 63, false);
 
 	const int OldSquare = MovingPiece->Square;
 
@@ -601,12 +681,11 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 		return false; // no move happened
 	}
 
-	PieceType OldNewPieceType = OutSpecialMove->PromotedPieceType;
+	const PieceColor MovingColor = MovingPiece->Color;
+	const PieceColor OtherColor = (PieceColor)(1 - MovingColor);
 
 	OutSpecialMove->Invalidate();
 	OutSpecialMove->Move = { OldSquare, NewSquare};
-	OutSpecialMove->MovedPiece = MovingPiece;
-	OutSpecialMove->PromotedPieceType = OldNewPieceType;
 
 	const auto [OldRank, OldFile] = Piece::SquareToRankFile(MovingPiece->Square);
 	const auto [NewRank, NewFile] = Piece::SquareToRankFile(NewSquare);
@@ -625,28 +704,20 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 	bool bIsMoveAllowed = MovingPiece->IsAllowedMove(NewSquare);
 
 	Piece* CapturedPiece = nullptr;
-	bool bHasPieceOfSameColor = false;
 
-	if (IsBitSet(Bitboard.Occupied[1 - MovingPiece->Color], NewSquare))
+	if (IsBitSet(Bitboard.Occupied[OtherColor], NewSquare))
 	{
 		if (CapturedPiece = GetPiece(NewSquare))
 		{
-			if (CapturedPiece->Type == King)
-			{
-				CapturedPiece = nullptr;
-				bIsMoveAllowed = false;
-			}
-			else
-			{
-				OutSpecialMove->Type = Capture;
-				OutSpecialMove->OtherPieceMove = { NewSquare, -1 };
-				OutSpecialMove->CapturedPiece = CapturedPiece;
-			}
+			OutSpecialMove->Type = Capture;
+			OutSpecialMove->OtherPieceMove = { NewSquare, -1 };
+			OutSpecialMove->OtherPiece = CapturedPiece;
 		}
 	}
 
-	if (IsBitSet(Bitboard.Occupied[MovingPiece->Color], NewSquare))
+	if (IsBitSet(Bitboard.Occupied[MovingColor], NewSquare))
 	{
+		CapturedPiece = nullptr;
 		bIsMoveAllowed = false;
 	}
 	else
@@ -659,13 +730,13 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 				{
 					bIsMoveAllowed = true;
 				}
-				else if (EnpassantSquare != -1 && bIsMoveAllowed == false) // en passant capture
+				else if (EnpassantSquare != -1 && bIsMoveAllowed == false) // en passant capture (TODO: investigate clearing of EnpassantSquare)
 				{
 					int EnpassantSquareToTest = Piece::RankFileToSquare(OldRank, NewFile);
 
 					if (EnpassantSquareToTest == EnpassantSquare)
 					{
-						if (IsBitSet(Bitboard.Pieces[1 - MovingPiece->Color][Pawn], EnpassantSquare))
+						if (IsBitSet(Bitboard.Pieces[OtherColor][Pawn], EnpassantSquare))
 						{
 							CapturedPiece = GetPiece(EnpassantSquareToTest);
 
@@ -675,8 +746,8 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 
 								OutSpecialMove->Type = Capture;
 								OutSpecialMove->OtherPieceMove = { EnpassantSquare, -1 };
-								OutSpecialMove->CapturedPiece = CapturedPiece;
-								OutSpecialMove->bIsEnpassant = true;
+								OutSpecialMove->OtherPiece = CapturedPiece;
+								OutSpecialMove->ExtraInfo.bIsEnpassant = true;
 							}
 						}
 					}
@@ -686,17 +757,23 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 					bIsMoveAllowed = false;
 				}
 			}
-			else if (AbsDeltaRank == 2 && AbsDeltaFile == 0 && (MovingPiece->Color == White ? OldRank == 1 : OldRank == 6) && !CapturedPiece) // pawn's first move
+			else if (AbsDeltaRank == 2 && AbsDeltaFile == 0 && !CapturedPiece) // pawn's first move
 			{
-				int SquareInFront = Piece::RankFileToSquare(OldRank + RankMoveDir, OldFile);
+				int SecondRank = MovingColor == White ? 1 : 6;
 
-				bIsMoveAllowed = IsBitSet(Bitboard.AllOccupied, SquareInFront) == false;
-
-				if (bIsMoveAllowed)
+				if (OldRank == SecondRank)
 				{
-					OutSpecialMove->Type = PawnDoublePush;
-					OutSpecialMove->OtherPieceMove = OutSpecialMove->Move;
-					OutSpecialMove->EnpassantSquare = NewSquare;
+					int IntermediateRank = MovingColor == White ? 2 : 5;
+
+					int IntermediateSquare = Piece::RankFileToSquare(IntermediateRank, OldFile);
+
+					bIsMoveAllowed = IsBitSet(Bitboard.AllOccupied, IntermediateSquare) == false;
+
+					if (bIsMoveAllowed)
+					{
+						OutSpecialMove->Type = PawnDoublePush;
+						OutSpecialMove->ExtraInfo.EnpassantSquare = NewSquare;
+					}
 				}
 			}
 			else if (CapturedPiece) // pawn getting blocked
@@ -706,31 +783,31 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 		}
 		else if (MovingPiece->Type == Bishop)
 		{
-			uint64_t BishopMoves = Attacks.GetBishopMoves(OldSquare, Bitboard.AllOccupied, Bitboard.Occupied[MovingPiece->Color]);
+			uint64_t BishopMoves = Attacks.GetBishopMoves(OldSquare, Bitboard.AllOccupied, Bitboard.Occupied[MovingColor]);
 
 			bIsMoveAllowed = IsBitSet(BishopMoves, NewSquare);
 		}
 		else if (MovingPiece->Type == Rook)
 		{
-			uint64_t RookMoves = Attacks.GetRookMoves(OldSquare, Bitboard.AllOccupied, Bitboard.Occupied[MovingPiece->Color]);
+			uint64_t RookMoves = Attacks.GetRookMoves(OldSquare, Bitboard.AllOccupied, Bitboard.Occupied[MovingColor]);
 
 			bIsMoveAllowed = IsBitSet(RookMoves, NewSquare);
 		}
 		else if (MovingPiece->Type == Queen)
 		{
-			uint64_t QueenMoves = Attacks.GetQueenMoves(OldSquare, Bitboard.AllOccupied, Bitboard.Occupied[MovingPiece->Color]);
+			uint64_t QueenMoves = Attacks.GetQueenMoves(OldSquare, Bitboard.AllOccupied, Bitboard.Occupied[MovingColor]);
 
 			bIsMoveAllowed = IsBitSet(QueenMoves, NewSquare);
 		}
 		else if (MovingPiece->Type == King)
 		{
-			if (!bIsMoveAllowed && !CapturedPiece) // might be trying to castle?
+			if (!bIsMoveAllowed && !CapturedPiece && !IsAttacked(MovingPiece)) // might be trying to castle?
 			{
 				if (NewFile + DeltaFileDir >= 0 && NewFile + DeltaFileDir <= 7)
 				{
 					int CastlingRookSquare = Piece::RankFileToSquare(OldRank, NewFile + DeltaFileDir);
 
-					if (!IsBitSet(Bitboard.Pieces[MovingPiece->Color][Rook], CastlingRookSquare))
+					if (!IsBitSet(Bitboard.Pieces[MovingColor][Rook], CastlingRookSquare))
 					{
 						int CastlingRookFile = NewFile + 2 * DeltaFileDir;
 
@@ -740,7 +817,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 						}
 					}
 
-					if (IsBitSet(Bitboard.Pieces[MovingPiece->Color][Rook], CastlingRookSquare))
+					if (IsBitSet(Bitboard.Pieces[MovingColor][Rook], CastlingRookSquare))
 					{
 						Piece* CastlingRook = GetPiece(CastlingRookSquare);
 
@@ -759,17 +836,20 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 												CastlingRookSquare,	// old rook square
 												SquareBetween,		// new rook square
 										};
-										OutSpecialMove->CastledRook = CastlingRook;
+										OutSpecialMove->OtherPiece = CastlingRook;
 									};
 
-								const SpecialMove& KingSideCastle = AvailableCastlingRights.KingSide[MovingPiece->Color];
-								const SpecialMove& QueenSideCastle = AvailableCastlingRights.QueenSide[MovingPiece->Color];
+								const SpecialMove& KingSideCastle = StaticCastlingRights::KingSide[MovingColor];
+								const SpecialMove& QueenSideCastle = StaticCastlingRights::QueenSide[MovingColor];
 
-								if (KingSideCastle.Type & Castle && KingSideCastle.Move.IsAllowed() && NewSquare == KingSideCastle.Move.NewSquare)
+								CastlingRights KingSideRights = MovingColor == White ? WhiteKingSide : BlackKingSide;
+								CastlingRights QueenSideRights = MovingColor == White ? WhiteQueenSide : BlackQueenSide;
+
+								if ((AvailableCastlingRights & KingSideRights) && NewSquare == KingSideCastle.Move.NewSquare)
 								{
 									AllowCastle();
 								}
-								else if (QueenSideCastle.Type & Castle && QueenSideCastle.Move.IsAllowed() && NewSquare == QueenSideCastle.Move.NewSquare)
+								else if ((AvailableCastlingRights & QueenSideRights) && NewSquare == QueenSideCastle.Move.NewSquare)
 								{
 									int SecondSquareBetween = Piece::RankFileToSquare(OldRank, NewFile + DeltaFileDir);
 
@@ -786,11 +866,21 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 		}
 	}
 
+	if (CapturedPiece && CapturedPiece->Type == King)
+	{
+		bIsMoveAllowed = false;
+	}
+
 	if (bIsMoveAllowed)
 	{
-		if (MovingPiece->Type == Pawn && NewRank == 7) // Pawn promotion
+		if (MovingPiece->Type == Pawn) // Pawn promotion
 		{
-			OutSpecialMove->Type |= PawnPromotion;
+			int PromotionRank = MovingColor == White ? 7 : 0;
+
+			if (NewRank == PromotionRank)
+			{
+				OutSpecialMove->Type |= PawnPromotion;
+			}
 		}
 
 		if (!bAllowPseudolegal)
@@ -803,7 +893,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 			{
 				// a castling king may not pass through a piece that is under attack
 
-				if (OutSpecialMove->CastledRook && IsAttacked(OutSpecialMove->CastledRook))
+				if (IsAttacked(OutSpecialMove->OtherPiece))
 				{
 					bIsMoveAllowed = false;
 				}
@@ -811,7 +901,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 
 			if (bIsMoveAllowed) // might've been disallowed by castling check above
 			{
-				if (IsInCheck(MovingPiece->Color))
+				if (IsInCheck(MovingColor))
 				{
 					bIsMoveAllowed = false;
 				}
@@ -829,28 +919,34 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 	return bIsMoveAllowed;
 }
 
-void ChessEngine::MakeMove(const SpecialMove& Move, CastlingRights* OutCastlingRights, int* OutEnpassantSquare, uint64_t* OutHash) const
+void ChessEngine::MakeMove(const SpecialMove& Move, CastlingRights* OutCastlingRights, int* OutEnpassantSquare) const
 {
-	ASSERT(Move.MovedPiece && Move.Move.IsAllowed());
+	ASSERT(Move.Move.IsAllowed());
 
-	Move.MovedPiece->Square = Move.Move.NewSquare;
+	DO_SQUARES_CHECK();
+
+	Piece* MovedPiece = GetMovedPiece(Move, false);
+
+	MovedPiece->Square = Move.Move.NewSquare;
+
+	Squares[Move.Move.OldSquare] = nullptr;
+	Squares[Move.Move.NewSquare] = MovedPiece;
 
 	Piece* OtherPiece = nullptr;
 
 	if (Move.IsAllowed())
 	{
-		if (Move.Type & Castle)
+		if (Move.Type & (Capture | Castle))
 		{
-			OtherPiece = Move.CastledRook;
-		}
-		else if (Move.Type & Capture)
-		{
-			OtherPiece = Move.CapturedPiece;
+			OtherPiece = Move.OtherPiece;
 		}
 		
 		if (Move.Type & PawnPromotion)
 		{
-			Move.MovedPiece->Type = Move.PromotedPieceType;
+			if (Move.ExtraInfo.PromotedPieceType != Null) // we don't filter this out in Move.IsAllowed() since we need to allow it for move gen
+			{
+				MovedPiece->Type = Move.ExtraInfo.PromotedPieceType;
+			}
 		}
 	}
 
@@ -858,118 +954,155 @@ void ChessEngine::MakeMove(const SpecialMove& Move, CastlingRights* OutCastlingR
 	{
 		OtherPiece->Square = Move.OtherPieceMove.NewSquare;
 
+		if (Move.Type & Castle) // don't do captures here since we update MovedPiece above
+		{
+			Squares[Move.OtherPieceMove.OldSquare] = nullptr;
+			Squares[Move.OtherPieceMove.NewSquare] = OtherPiece;
+		}
+
 		if ((OtherPiece->Type == King || OtherPiece->Type == Rook) && OutCastlingRights)
 		{
-			RemoveCastlingRights(OtherPiece, OtherPiece->Square, *OutCastlingRights);
+			RemoveCastlingRights(OtherPiece, Move.OtherPieceMove.OldSquare, Move.OtherPieceMove.NewSquare, *OutCastlingRights);
 		}
 	}
 
-	if ((Move.MovedPiece->Type == King || Move.MovedPiece->Type == Rook) && OutCastlingRights)
+	if ((MovedPiece->Type == King || MovedPiece->Type == Rook) && OutCastlingRights)
 	{
-		RemoveCastlingRights(Move.MovedPiece, Move.MovedPiece->Square, *OutCastlingRights);
+		RemoveCastlingRights(MovedPiece, Move.Move.OldSquare, Move.Move.NewSquare, *OutCastlingRights);
 	}
 
-	MakeBitboardsMove(Move);
+	MakeBitboardsMove(MovedPiece, Move);
 
 	if (OutEnpassantSquare)
 	{
-		*OutEnpassantSquare = Move.EnpassantSquare;
+		*OutEnpassantSquare = Move.ExtraInfo.EnpassantSquare;
 	}
 
-	if (OutHash && OutCastlingRights && OutEnpassantSquare)
-	{
-		*OutHash = GenerateHash((PieceColor)(1 - CurrentMove), *OutCastlingRights, *OutEnpassantSquare);
-	}
+	DO_SQUARES_CHECK();
 }
 
 void ChessEngine::UnMakeMove(const SpecialMove& Move) const
 {
-	ASSERT(Move.MovedPiece && Move.Move.IsAllowed());
+	ASSERT(Move.Move.IsAllowed());
 
-	UnMakeBitboardsMove(Move);
+	DO_SQUARES_CHECK();
 
-	Move.MovedPiece->Square = Move.Move.OldSquare;
+	Piece* MovedPiece = GetMovedPiece(Move, true);
+
+	UnMakeBitboardsMove(MovedPiece, Move);
+
+	MovedPiece->Square = Move.Move.OldSquare;
+
+	Squares[Move.Move.OldSquare] = MovedPiece;
+	Squares[Move.Move.NewSquare] = nullptr;
 
 	Piece* OtherPiece = nullptr;
 
 	// don't check move validity since it might have changed in MakeMove
 
-	if (Move.Type & Castle)
+	if (Move.Type & (Capture | Castle))
 	{
-		OtherPiece = Move.CastledRook;
-	}
-	else if (Move.Type & Capture)
-	{
-		OtherPiece = Move.CapturedPiece;
+		OtherPiece = Move.OtherPiece;
 	}
 	
 	if (Move.Type & PawnPromotion)
 	{
-		Move.MovedPiece->Type = Pawn;
+		MovedPiece->Type = Pawn;
 	}
 
 	if (OtherPiece)
 	{
 		OtherPiece->Square = Move.OtherPieceMove.OldSquare;
+
+		Squares[Move.OtherPieceMove.OldSquare] = OtherPiece;
+
+		if (Move.OtherPieceMove.NewSquare != -1)
+		{
+			Squares[Move.OtherPieceMove.NewSquare] = nullptr;
+		}
+
+	}
+
+	DO_SQUARES_CHECK();
+}
+
+void ChessEngine::MakeBitboardsMove(Piece* MovedPiece, const SpecialMove& Move) const
+{
+	ASSERT(MovedPiece && Move.Move.IsAllowed());
+
+	if (Move.IsAllowed())
+	{
+		if (Move.Type & Capture)
+		{
+			ClearBit(Bitboard.Pieces[Move.OtherPiece->Color][Move.OtherPiece->Type], Move.OtherPieceMove.OldSquare);
+			ClearBit(Bitboard.Occupied[Move.OtherPiece->Color], Move.OtherPieceMove.OldSquare);
+			ClearBit(Bitboard.AllOccupied, Move.OtherPieceMove.OldSquare);
+		}
+		else if (Move.Type & Castle)
+		{
+			Bitboard.MoveTo(Move.OtherPiece->Color, Rook, Move.OtherPieceMove.OldSquare, Move.OtherPieceMove.NewSquare);
+		}
+
+		if (Move.Type & PawnPromotion)
+		{
+			// leave the piece in pawn bitboard since it doesn't matter which type it is (only in movegen, for pinned pieces)
+			ClearBit(Bitboard.Pieces[MovedPiece->Color][Pawn], Move.Move.OldSquare);
+
+			if (Move.ExtraInfo.PromotedPieceType != Null) // we don't filter this out in Move.IsAllowed() since we need to allow it for move gen
+			{
+				SetBit(Bitboard.Pieces[MovedPiece->Color][Move.ExtraInfo.PromotedPieceType], Move.Move.OldSquare);
+			}
+		}
+	}
+
+	Bitboard.MoveTo(MovedPiece->Color, MovedPiece->Type, Move.Move.OldSquare, Move.Move.NewSquare);
+}
+
+void ChessEngine::UnMakeBitboardsMove(Piece* MovedPiece, const SpecialMove& Move) const
+{
+	ASSERT(MovedPiece && Move.Move.IsAllowed());
+
+	Bitboard.MoveTo(MovedPiece->Color, MovedPiece->Type, Move.Move.NewSquare, Move.Move.OldSquare);
+
+	if (Move.IsAllowed())
+	{
+		if (Move.Type & PawnPromotion)
+		{
+			if (Move.ExtraInfo.PromotedPieceType != Null) // we don't filter this out in Move.IsAllowed() since we need to allow it for move gen
+			{
+				ClearBit(Bitboard.Pieces[MovedPiece->Color][Move.ExtraInfo.PromotedPieceType], Move.Move.OldSquare);
+			}
+
+			SetBit(Bitboard.Pieces[MovedPiece->Color][Pawn], Move.Move.OldSquare);
+		}
+
+		if (Move.Type & Capture)
+		{
+			SetBit(Bitboard.Pieces[Move.OtherPiece->Color][Move.OtherPiece->Type], Move.OtherPieceMove.OldSquare);
+			SetBit(Bitboard.Occupied[Move.OtherPiece->Color], Move.OtherPieceMove.OldSquare);
+			SetBit(Bitboard.AllOccupied, Move.OtherPieceMove.OldSquare);
+		}
+		else if (Move.Type & Castle)
+		{
+			Bitboard.MoveTo(Move.OtherPiece->Color, Rook, Move.OtherPieceMove.NewSquare, Move.OtherPieceMove.OldSquare);
+		}
 	}
 }
 
-void ChessEngine::MakeBitboardsMove(const SpecialMove& Move) const
+Piece* ChessEngine::GetMovedPiece(const SpecialMove& Move, bool bHasMoveHappened) const
 {
-	ASSERT(Move.Move.IsAllowed());
+	int Square = bHasMoveHappened ? Move.Move.NewSquare : Move.Move.OldSquare;
 
-	if (Move.Type & Capture)
-	{
-		ClearBit(Bitboard.Pieces[Move.CapturedPiece->Color][Move.CapturedPiece->Type], Move.OtherPieceMove.OldSquare);
-		ClearBit(Bitboard.Occupied[Move.CapturedPiece->Color], Move.OtherPieceMove.OldSquare);
-		ClearBit(Bitboard.AllOccupied, Move.OtherPieceMove.OldSquare);
-	}
-	else if (Move.Type & Castle)
-	{
-		Bitboard.MoveTo(Move.CastledRook->Color, Rook, Move.OtherPieceMove.OldSquare, Move.OtherPieceMove.NewSquare);
-	}
-
-	if (Move.Type & PawnPromotion)
-	{
-		ClearBit(Bitboard.Pieces[Move.MovedPiece->Color][Pawn], Move.Move.OldSquare);
-		ClearBit(Bitboard.Occupied[Move.MovedPiece->Color], Move.Move.OldSquare);
-		ClearBit(Bitboard.AllOccupied, Move.Move.OldSquare);
-
-		SetBit(Bitboard.Pieces[Move.MovedPiece->Color][Move.PromotedPieceType], Move.Move.OldSquare);
-		SetBit(Bitboard.Occupied[Move.MovedPiece->Color], Move.Move.OldSquare);
-		SetBit(Bitboard.AllOccupied, Move.Move.OldSquare);
-	}
-
-	Bitboard.MoveTo(Move.MovedPiece->Color, Move.MovedPiece->Type, Move.Move.OldSquare, Move.Move.NewSquare);
+	return Squares[Square];
 }
 
-void ChessEngine::UnMakeBitboardsMove(const SpecialMove& Move) const
+Piece* ChessEngine::GetOtherPiece(const SpecialMove& Move, bool bHasMoveHappened) const
 {
-	ASSERT(Move.Move.IsAllowed());
+	return Move.OtherPiece;
 
-	Bitboard.MoveTo(Move.MovedPiece->Color, Move.MovedPiece->Type, Move.Move.NewSquare, Move.Move.OldSquare);
+	//int Square = bHasMoveHappened ? Move.OtherPieceMove.NewSquare : Move.OtherPieceMove.OldSquare;
 
-	if (Move.Type & PawnPromotion)
-	{
-		ClearBit(Bitboard.Pieces[Move.MovedPiece->Color][Move.PromotedPieceType], Move.Move.OldSquare);
-		ClearBit(Bitboard.Occupied[Move.MovedPiece->Color], Move.Move.OldSquare);
-		ClearBit(Bitboard.AllOccupied, Move.Move.OldSquare);
- 
-		SetBit(Bitboard.Pieces[Move.MovedPiece->Color][Pawn], Move.Move.OldSquare);
-		SetBit(Bitboard.Occupied[Move.MovedPiece->Color], Move.Move.OldSquare);
-		SetBit(Bitboard.AllOccupied, Move.Move.OldSquare);
-	}
-
-	if (Move.Type & Capture)
-	{
-		SetBit(Bitboard.Pieces[Move.CapturedPiece->Color][Move.CapturedPiece->Type], Move.OtherPieceMove.OldSquare);
-		SetBit(Bitboard.Occupied[Move.CapturedPiece->Color], Move.OtherPieceMove.OldSquare);
-		SetBit(Bitboard.AllOccupied, Move.OtherPieceMove.OldSquare);
-	}
-	else if (Move.Type & Castle)
-	{
-		Bitboard.MoveTo(Move.CastledRook->Color, Rook, Move.OtherPieceMove.NewSquare, Move.OtherPieceMove.OldSquare);
-	}
+	//return Squares[Square];
 }
 
 bool ChessEngine::IsInCheck(PieceColor Color) const
@@ -982,7 +1115,7 @@ bool ChessEngine::IsInCheck(PieceColor Color) const
 
 bool ChessEngine::IsAttacked(int AttackedSquare, PieceColor AttackerColor) const
 {
-	ASSERT((unsigned)AttackedSquare <= 63, false);
+	ASSERT((uint8_t)AttackedSquare <= 63, false);
 
 	const auto [Rank, File] = Piece::SquareToRankFile(AttackedSquare);
 
@@ -1029,7 +1162,7 @@ bool ChessEngine::IsAttacked(Piece* AttackedPiece) const
 	return IsAttacked(AttackedSquare, AttackerColor);
 }
 
-void ChessEngine::RemoveCastlingRights(Piece* MovedPiece, int NewSquare, CastlingRights& OutCastlingRights) const
+void ChessEngine::RemoveCastlingRights(Piece* MovedPiece, const int OldSquare, const int NewSquare, CastlingRights& OutCastlingRights) const
 {
 	ASSERT(MovedPiece);
 
@@ -1037,25 +1170,49 @@ void ChessEngine::RemoveCastlingRights(Piece* MovedPiece, int NewSquare, Castlin
 
 	if (MovedPiece->Type == King)
 	{
-		OutCastlingRights.KingSide[Color].Invalidate();
-		OutCastlingRights.QueenSide[Color].Invalidate();
+		CastlingRights RightsToRemove = Color == White ?
+			WhiteCastling :
+			BlackCastling;
+
+		OutCastlingRights &= ~RightsToRemove;
 	}
 	else if (MovedPiece->Type == Rook)
 	{
-		if (MovedPiece->Square == OutCastlingRights.KingSide[Color].OtherPieceMove.NewSquare)
+		const int KingSideOldSquare = StaticCastlingRights::KingSide[Color].OtherPieceMove.OldSquare;
+		const int QueenSideOldSquare = StaticCastlingRights::QueenSide[Color].OtherPieceMove.OldSquare;
+
+		const int KingSideNewSquare = StaticCastlingRights::KingSide[Color].OtherPieceMove.NewSquare;
+		const int QueenSideNewSquare = StaticCastlingRights::QueenSide[Color].OtherPieceMove.NewSquare;
+
+		if (OldSquare == KingSideOldSquare ||
+			NewSquare == KingSideNewSquare)
 		{
-			OutCastlingRights.KingSide[Color].Invalidate();
+			CastlingRights RightsToRemove = Color == White ?
+				WhiteKingSide :
+				BlackKingSide;
+
+			OutCastlingRights &= ~RightsToRemove;
 		}
-		else if (MovedPiece->Square == OutCastlingRights.QueenSide[Color].OtherPieceMove.NewSquare)
+		else if (OldSquare == QueenSideOldSquare ||
+			NewSquare == QueenSideNewSquare)
 		{
-			OutCastlingRights.QueenSide[Color].Invalidate();
+			CastlingRights RightsToRemove = Color == White ?
+				WhiteQueenSide :
+				BlackQueenSide;
+
+			OutCastlingRights &= ~RightsToRemove;
 		}
 	}
 }
 
+void ChessEngine::ToggleMove()
+{
+	CurrentMove = (PieceColor)(1 - CurrentMove);
+}
+
 void ChessEngine::FinishMove(Piece* MovingPiece, const SpecialMove& Move)
 {
-	ASSERT(Move.IsAllowed() && MovingPiece == Move.MovedPiece);
+	ASSERT(Move.IsAllowed());
 
 	if (CurrentMove == Black)
 	{
@@ -1069,13 +1226,16 @@ void ChessEngine::FinishMove(Piece* MovingPiece, const SpecialMove& Move)
 
 	if (Move.Type & PawnDoublePush)
 	{
-		EnpassantSquare = Move.EnpassantSquare;
+		EnpassantSquare = Move.ExtraInfo.EnpassantSquare;
 	}
-	else if (Move.Type & Castle && Move.OtherPieceMove.IsAllowed())
+	else if (Move.Type & Castle)
 	{
-		ASSERT(Move.CastledRook);
+		Piece* OtherPiece = GetOtherPiece(Move, false);
 
-		Move.CastledRook->Square = Move.OtherPieceMove.NewSquare;
+		OtherPiece->Square = Move.OtherPieceMove.NewSquare;
+
+		Squares[Move.OtherPieceMove.OldSquare] = nullptr;
+		Squares[Move.OtherPieceMove.NewSquare] = OtherPiece;
 	}
 
 	if (PawnPromotionSquare == -1 && (Move.Type & PawnPromotion))
@@ -1090,9 +1250,12 @@ void ChessEngine::FinishMove(Piece* MovingPiece, const SpecialMove& Move)
 	LastMove = Move;
 	MovingPiece->Square = Move.Move.NewSquare;
 
+	Squares[Move.Move.OldSquare] = nullptr;
+	Squares[Move.Move.NewSquare] = MovingPiece;
+
 	if (PawnPromotionSquare == -1)
 	{
-		CurrentMove = (PieceColor)(1 - CurrentMove);
+		ToggleMove();
 	}
 
 	if (HalfMoveClock >= 100) // it should actually only enforce it at 150 and offer draw at 100 but it's fine for now (todo)
@@ -1102,7 +1265,9 @@ void ChessEngine::FinishMove(Piece* MovingPiece, const SpecialMove& Move)
 
 	// update bitboards
 
-	MakeBitboardsMove(Move);
+	MakeBitboardsMove(MovingPiece, Move);
+
+	printf("Fen Pos: %s\n", GenerateFENPosition());
 
 	CalculatePossibleMoves();
 }
@@ -1122,18 +1287,18 @@ void ChessEngine::TryMoveTo(Piece* MovingPiece, int NewSquare)
 
 		if (MovingPiece->Type == King || MovingPiece->Type == Rook)
 		{
-			RemoveCastlingRights(MovingPiece, NewSquare, AvailableCastlingRights);
+			RemoveCastlingRights(MovingPiece, OutSpecialMove.Move.OldSquare, OutSpecialMove.Move.NewSquare, AvailableCastlingRights);
 		}
 		
 		if (OutSpecialMove.Type & Capture)
 		{
-			Piece* CapturedPiece = OutSpecialMove.CapturedPiece;
+			Piece* CapturedPiece = GetOtherPiece(OutSpecialMove, false);
 
 			if (CapturedPiece)
 			{
 				if (CapturedPiece->Type == King || CapturedPiece->Type == Rook) // can never be king but you never know
 				{
-					RemoveCastlingRights(CapturedPiece, CapturedPiece->Square, AvailableCastlingRights);
+					RemoveCastlingRights(CapturedPiece, OutSpecialMove.OtherPieceMove.OldSquare, OutSpecialMove.OtherPieceMove.NewSquare, AvailableCastlingRights);
 				}
 
 				CapturePiece(CapturedPiece);
@@ -1153,6 +1318,23 @@ void ChessEngine::CapturePiece(Piece* CapturedPiece)
 	CapturedPiece->Square = -1;
 }
 
+void ChessEngine::PromotePawn(Piece* PromotingPawn, PieceType NewPieceType)
+{
+	ASSERT(PromotingPawn && PromotingPawn->Type == Pawn && NewPieceType != Null);
+
+	LastMove.Type |= PawnPromotion;
+	LastMove.ExtraInfo.PromotedPieceType = NewPieceType;
+
+	ClearBit(Bitboard.Pieces[PromotingPawn->Color][Pawn], LastMove.Move.NewSquare);
+	SetBit(Bitboard.Pieces[PromotingPawn->Color][NewPieceType], LastMove.Move.NewSquare);
+
+	PromotingPawn->Type = NewPieceType;
+
+	PawnPromotionSquare = -1;
+
+	ToggleMove();
+}
+
 void ChessEngine::HandleBotPawnPromotion()
 {
 	if (PawnPromotionSquare == -1)
@@ -1170,11 +1352,7 @@ void ChessEngine::HandleBotPawnPromotion()
 
 	PieceType PromotedPieceType = Queen; // TODO: choose highest for now
 
-	LastMove.PromotedPieceType = PromotedPieceType;
-
-	FinishMove(PromotingPawn, LastMove);
-
-	PromotingPawn->Type = PromotedPieceType;
+	PromotePawn(PromotingPawn, PromotedPieceType);
 }
 
 void ChessEngine::GenerateMove()
@@ -1206,8 +1384,6 @@ void ChessEngine::GenerateMove()
 	
 	CurrentHash = GenerateHash(CurrentMove, AvailableCastlingRights, EnpassantSquare);
 
-	printf("currenthash: 0x%llX\n", CurrentHash);
-
 	int Depth = 4;
 
 	SpecialMove ChosenMove;
@@ -1221,12 +1397,15 @@ void ChessEngine::GenerateMove()
 	if (ChosenMove.IsAllowed())
 	{
 		printf("playing move with score %d\n", BestScore);
-		TryMoveTo(ChosenMove.MovedPiece, ChosenMove.Move.NewSquare);
+
+		Piece* MovedPiece = GetMovedPiece(ChosenMove, false);
+
+		TryMoveTo(MovedPiece, ChosenMove.Move.NewSquare);
 	}
-	//else if (BestScore > SEARCHBESTMOVE_MIN)
-	//{
-	//	INT3;
-	//}
+	else
+	{
+		INT3;
+	}
 }
 
 int ChessEngine::GetMaterialValue(PieceColor Color) const
@@ -1256,7 +1435,7 @@ int ChessEngine::GetMobility(PieceColor Color) const
 	constexpr bool bAllowPseudolegalMoves = false;
 	GetAllAvailableMoves(Color, &PossibleMoves, bAllowPseudolegalMoves);
 
-	return PossibleMoves.size();
+	return (int)PossibleMoves.size();
 }
 
 int ChessEngine::EvaluatePosition() const
@@ -1280,15 +1459,17 @@ int ChessEngine::GuessMoveScore(const SpecialMove& Move) const
 {
 	int Score = 0;
 
-	if (Move.CapturedPiece)
+	Piece* MovedPiece = GetMovedPiece(Move, false);
+
+	if ((Move.Type & Capture) && Move.OtherPiece)
 	{
-		Score += 10 * PieceValues[Move.CapturedPiece->Type]
-			- PieceValues[Move.MovedPiece->Type];
+		Score += 10 * PieceValues[Move.OtherPiece->Type]
+			- PieceValues[MovedPiece->Type];
 	}
 
 	if (Move.Type & PawnPromotion)
 	{
-		Score += 1000 + PieceValues[Move.PromotedPieceType];
+		Score += 1000 + PieceValues[Move.ExtraInfo.PromotedPieceType];
 	}
 
 	return Score;
@@ -1359,7 +1540,9 @@ int ChessEngine::SearchBestMove(SpecialMove& OutBestMove, PieceColor Color, int 
 		int OldEnpassantSquare = EnpassantSquare;
 		uint64_t OldHash = CurrentHash;
 
-		MakeMove(Move.Move, &AvailableCastlingRights, &EnpassantSquare, &CurrentHash);
+		MakeMove(Move.Move, &AvailableCastlingRights, &EnpassantSquare);
+
+		CurrentHash = GenerateHash((PieceColor)(1 - CurrentMove), AvailableCastlingRights, EnpassantSquare);
 
 		int MoveEval = SEARCHBESTMOVE_MIN;
 
@@ -1409,9 +1592,78 @@ int ChessEngine::SearchBestMove(SpecialMove& OutBestMove, PieceColor Color, int 
 	return Alpha;
 }
 
-static int Captures = 0, Ep = 0, Castles = 0, Promotions = 0;
+template<>
+struct std::less<SpecialMove>
+{
+	bool operator()(const SpecialMove& a, const SpecialMove& b) const
+	{
+		const auto [AOldRank, AOldFile] = Piece::RotateCCW(Piece::SquareToRankFile(a.Move.OldSquare));
+		const auto [ANewRank, ANewFile] = Piece::RotateCCW(Piece::SquareToRankFile(a.Move.NewSquare));
 
-int ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot)
+		std::array<char, 3> AOldAlgebraic = Piece::RankFileToAlgebraic({ AOldRank, 7 - AOldFile });
+		std::array<char, 3> ANewAlgebraic = Piece::RankFileToAlgebraic({ ANewRank, 7 - ANewFile });
+
+		const auto [BOldRank, BOldFile] = Piece::RotateCCW(Piece::SquareToRankFile(b.Move.OldSquare));
+		const auto [BNewRank, BNewFile] = Piece::RotateCCW(Piece::SquareToRankFile(b.Move.NewSquare));
+
+		std::array<char, 3> BOldAlgebraic = Piece::RankFileToAlgebraic({ BOldRank, 7 - BOldFile });
+		std::array<char, 3> BNewAlgebraic = Piece::RankFileToAlgebraic({ BNewRank, 7 - BNewFile });
+
+		const char* APromotionChar = "";
+
+		if (a.Type & PawnPromotion)
+		{
+			switch (a.ExtraInfo.PromotedPieceType)
+			{
+			case Knight:
+				APromotionChar = "n";
+				break;
+			case Bishop:
+				APromotionChar = "b";
+				break;
+			case Rook:
+				APromotionChar = "r";
+				break;
+			case Queen:
+				APromotionChar = "q";
+				break;
+			default:
+				break;
+			}
+		}
+
+		const char* BPromotionChar = "";
+
+		if (b.Type & PawnPromotion)
+		{
+			switch (b.ExtraInfo.PromotedPieceType)
+			{
+			case Knight:
+				BPromotionChar = "n";
+				break;
+			case Bishop:
+				BPromotionChar = "b";
+				break;
+			case Rook:
+				BPromotionChar = "r";
+				break;
+			case Queen:
+				BPromotionChar = "q";
+				break;
+			default:
+				break;
+			}
+		}
+
+		return std::string_view(std::string(AOldAlgebraic.data()) + std::string(ANewAlgebraic.data()) + APromotionChar) <
+			std::string_view(std::string(BOldAlgebraic.data()) + std::string(BNewAlgebraic.data()) + BPromotionChar);
+	}
+};
+
+static size_t Captures = 0, Ep = 0, Castles = 0, Promotions = 0;
+static std::map<SpecialMove, size_t> PerftDivide;
+
+size_t ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot)
 {
 	if (Depth == 0)
 	{
@@ -1427,16 +1679,27 @@ int ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot)
 
 	GetAllAvailableMoves(Color, &Moves, bAllowPseudolegalMoves);
 
-	int NumPositons = 0;
+#ifndef _DEBUG
+	if (Depth == 1)
+	{
+		return Moves.size();
+	}
+#endif
+
+	size_t NumPositons = 0;
 
 	for (const SpecialMove& Move : Moves)
 	{
 		CastlingRights OldCastlingRights = AvailableCastlingRights;
 		int OldEnpassantSquare = EnpassantSquare;
 
-		uint64_t OldPieceBoard = Bitboard.Pieces[Move.MovedPiece->Color][Move.MovedPiece->Type];
-		uint64_t OldOccupancyPieceBoard = Bitboard.Occupied[Move.MovedPiece->Color];
-		uint64_t OldOccupancyBoard = Bitboard.AllOccupied;
+#ifdef _DEBUG
+		Piece* MovedPiece = GetMovedPiece(Move, false);
+
+		volatile uint64_t OldPieceBoard = Bitboard.Pieces[MovedPiece->Color][MovedPiece->Type];
+		volatile uint64_t OldOccupancyPieceBoard = Bitboard.Occupied[MovedPiece->Color];
+		volatile uint64_t OldOccupancyBoard = Bitboard.AllOccupied;
+#endif
 
 		MakeMove(Move, &AvailableCastlingRights, &EnpassantSquare);
 
@@ -1453,7 +1716,7 @@ int ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot)
 			{
 				Captures++;
 
-				if (Move.bIsEnpassant)
+				if (Move.ExtraInfo.bIsEnpassant != -1)
 				{
 					Ep++;
 				}
@@ -1463,27 +1726,34 @@ int ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot)
 			{
 				Promotions++;
 			}
+
+			if (bIsRoot)
+			{
+				PerftDivide[Move] = 1;
+			}
 		}
 		else
 		{
-			int PositionsFound = MoveGenerationTest((PieceColor)(1 - Color), Depth - 1, false);
+			size_t PositionsFound = MoveGenerationTest((PieceColor)(1 - Color), Depth - 1, false);
 			NumPositons += PositionsFound;
 
 			if (bIsRoot)
 			{
-				printf("%02d -> %02d: %d\n", Move.Move.OldSquare, Move.Move.NewSquare, PositionsFound);
+				PerftDivide[Move] = PositionsFound;
 			}
 		}
 
 		UnMakeMove(Move);
 
-		uint64_t NewPieceBoard = Bitboard.Pieces[Move.MovedPiece->Color][Move.MovedPiece->Type];
-		uint64_t NewOccupancyPieceBoard = Bitboard.Occupied[Move.MovedPiece->Color];
-		uint64_t NewOccupancyBoard = Bitboard.AllOccupied;
+#ifdef _DEBUG
+		volatile uint64_t NewPieceBoard = Bitboard.Pieces[MovedPiece->Color][MovedPiece->Type]; // what if it's a pawn promotion...
+		volatile uint64_t NewOccupancyPieceBoard = Bitboard.Occupied[MovedPiece->Color];
+		volatile uint64_t NewOccupancyBoard = Bitboard.AllOccupied;
 
 		ASSERT(OldPieceBoard == NewPieceBoard, 0);
 		ASSERT(OldOccupancyPieceBoard == NewOccupancyPieceBoard, 0);
 		ASSERT(OldOccupancyBoard == NewOccupancyBoard, 0);
+#endif
 
 		EnpassantSquare = OldEnpassantSquare;
 		AvailableCastlingRights = OldCastlingRights;
@@ -1491,14 +1761,51 @@ int ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot)
 
 	if (bIsRoot)
 	{
-		printf("Captures = %d, Ep = %d, Castles = %d, Promotions = %d\n",
+		printf("Total: %llu\n", NumPositons);
+
+		for (const auto& [Key, Value] : PerftDivide)
+		{
+			const auto [OldRank, OldFile] = Piece::RotateCCW(Piece::SquareToRankFile(Key.Move.OldSquare));
+			const auto [NewRank, NewFile] = Piece::RotateCCW(Piece::SquareToRankFile(Key.Move.NewSquare));
+
+			const char* PromotionChar = "";
+
+			if (Key.Type & PawnPromotion)
+			{
+				switch (Key.ExtraInfo.PromotedPieceType)
+				{
+				case Knight:
+					PromotionChar = "n";
+					break;
+				case Bishop:
+					PromotionChar = "b";
+					break;
+				case Rook:
+					PromotionChar = "r";
+					break;
+				case Queen:
+					PromotionChar = "q";
+					break;
+				default:
+					break;
+				}
+			}
+
+			printf("%s%s%s - %llu\n",
+				Piece::RankFileToAlgebraic({ OldRank, 7 - OldFile }).data(), Piece::RankFileToAlgebraic({ NewRank, 7 - NewFile }).data(), PromotionChar, Value);
+		}
+
+		printf("Captures = %llu, Ep = %llu, Castles = %llu, Promotions = %llu\n",
 			Captures, Ep, Castles, Promotions);
+
+		printf("CopyConstructorCalls = %llu\nMoveConstructorCalls = %llu\nCopyAssignmentCalls = %llu\nMoveAssignmentCalls = %llu\n",
+			SpecialMove::CopyConstructorCalls, SpecialMove::MoveConstructorCalls, SpecialMove::CopyAssignmentCalls, SpecialMove::MoveAssignmentCalls);
 	}
 
 	return NumPositons;
 }
 
-uint64_t ChessEngine::GenerateHash(PieceColor Move, const CastlingRights& CastlingRights, int EnpassantSquare) const
+uint64_t ChessEngine::GenerateHash(PieceColor Move, CastlingRights CastlingRights, int EnpassantSquare) const
 {
 	uint64_t Hash = 0;
 
@@ -1515,26 +1822,7 @@ uint64_t ChessEngine::GenerateHash(PieceColor Move, const CastlingRights& Castli
 		Hash ^= TranspositionTable.SideToMoveKey;
 	}
 
-	int CastlingRightsKey = 0;
-
-	if (CastlingRights.KingSide[White].Move.IsAllowed())
-	{
-		CastlingRightsKey |= 0b0001;
-	}
-	if (CastlingRights.QueenSide[White].Move.IsAllowed())
-	{
-		CastlingRightsKey |= 0b0010;
-	}
-	if (CastlingRights.KingSide[Black].Move.IsAllowed())
-	{
-		CastlingRightsKey |= 0b0100;
-	}
-	if (CastlingRights.QueenSide[Black].Move.IsAllowed())
-	{
-		CastlingRightsKey |= 0b1000;
-	}
-
-	Hash ^= TranspositionTable.CastlingKeys[CastlingRightsKey];
+	Hash ^= TranspositionTable.CastlingKeys[CastlingRights];
 
 	if (EnpassantSquare != -1)
 	{
@@ -1542,6 +1830,58 @@ uint64_t ChessEngine::GenerateHash(PieceColor Move, const CastlingRights& Castli
 	}
 
 	return Hash;
+}
+
+void ChessEngine::HandlePawnPromotion()
+{
+	ASSERT(PawnPromotionSquare != -1);
+
+	Piece* PromotingPawn = GetPiece(PawnPromotionSquare);
+
+	ASSERT(PromotingPawn && (LastMove.Type & PawnPromotion));
+
+	PieceType OldPieceType = PromotingPawn->Type;
+
+	ASSERT(OldPieceType == Pawn);
+
+	int OldSquare = LastMove.Move.OldSquare;
+
+	const ImVec2 SquareSize = GetSquareSize();
+	auto [PromotionSquareMin, PromotionSquareMax] = GetSquare(Piece::RotateCCW(PawnPromotionSquare));
+
+	if (PromotingPawn->Color == Black)
+	{
+		PromotionSquareMin.y -= 3.f * SquareSize.y;
+	}
+
+	const ImVec2 MousePos = ImGui::GetMousePos();
+	bool bLeftMouseClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+	if (bLeftMouseClicked)
+	{
+		bool bPromoted = false;
+
+		PieceType PromotedPieceType = Null;
+
+#define CHECK_FOR(PieceType, Distance) \
+const ImVec2 PieceType##Pos = ImVec2(PromotionSquareMin.x, PromotionSquareMin.y + (float)Distance * SquareSize.y); \
+if (MousePos >= PieceType##Pos && MousePos <= PieceType##Pos + SquareSize) { PromotedPieceType = PieceType; bPromoted = true; }
+
+		CHECK_FOR(Queen, 0);
+		CHECK_FOR(Knight, 1);
+		CHECK_FOR(Rook, 2);
+		CHECK_FOR(Bishop, 3);
+
+#undef CHECK_FOR
+
+		if (bPromoted)
+		{
+			SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
+			SelectedPiece = nullptr;
+
+			PromotePawn(PromotingPawn, PromotedPieceType);
+		}
+	}
 }
 
 void ChessEngine::SnapSelectedPiece(const ImVec2& Pos)
@@ -1553,10 +1893,7 @@ void ChessEngine::SnapSelectedPiece(const ImVec2& Pos)
 
 	int NewSquare = Piece::RotateCW(GetSquare(Pos));
 
-	if (NewSquare < 0 || NewSquare > 63)
-	{
-		return;
-	}
+	ASSERT((uint8_t)NewSquare <= 63);
 
 	TryMoveTo(SelectedPiece, NewSquare);
 }
@@ -1615,6 +1952,7 @@ void ChessEngine::SelectPiece(const ImVec2& Pos)
 				AvailableMoves.reserve(MaxAvailableMoves);
 
 				GetAvailableMoves(SelectedPiece, &AvailableMoves, bAllowPseudolegalMoves);
+				// GenerateLegalMoves(SelectedPiece->Color, &AvailableMoves);
 			}
 		}
 	}
@@ -1654,53 +1992,7 @@ void ChessEngine::HandleInput()
 		}
 		else
 		{
-			Piece* PromotingPawn = GetPiece(PawnPromotionSquare);
-
-			ASSERT(PromotingPawn && (LastMove.Type & PawnPromotion));
-
-			PieceType OldPieceType = PromotingPawn->Type;
-
-			ASSERT(OldPieceType == Pawn);
-
-			int OldSquare = LastMove.Move.OldSquare;
-
-			const ImVec2 SquareSize = GetSquareSize();
-			auto [PromotionSquareMin, PromotionSquareMax] = GetSquare(Piece::RotateCCW(PawnPromotionSquare));
-
-			if (PromotingPawn->Color == Black)
-			{
-				PromotionSquareMin.y -= 3.f * SquareSize.y;
-			}
-
-			if (bLeftMouseClicked)
-			{
-				bool bPromoted = false;
-
-				PieceType PromotedPieceType = Null;
-
-#define CHECK_FOR(PieceType, Distance) \
-const ImVec2 PieceType##Pos = ImVec2(PromotionSquareMin.x, PromotionSquareMin.y + (float)Distance * SquareSize.y); \
-if (MousePos >= PieceType##Pos && MousePos <= PieceType##Pos + SquareSize) { PromotedPieceType = PieceType; bPromoted = true; }
-
-				CHECK_FOR(Queen, 0);
-				CHECK_FOR(Knight, 1);
-				CHECK_FOR(Rook, 2);
-				CHECK_FOR(Bishop, 3);
-
-#undef CHECK_FOR
-
-				if (bPromoted)
-				{
-					LastMove.PromotedPieceType = PromotedPieceType;
-					
-					SelectedPieceMouseOffset = { -FLT_MAX, FLT_MAX };
-					SelectedPiece = nullptr;
-
-					FinishMove(PromotingPawn, LastMove);
-
-					PromotingPawn->Type = PromotedPieceType;
-				}
-			}
+			HandlePawnPromotion();
 		}
 	}
 	else if (bGameEnded && FullMoveCounter > 1)
@@ -1712,48 +2004,24 @@ if (MousePos >= PieceType##Pos && MousePos <= PieceType##Pos + SquareSize) { Pro
 	}
 }
 
-Piece* ChessEngine::GetPiece(int Rank, int File) const
-{
-	int Square = Piece::RankFileToSquare(Rank, File);
-
-	return GetPiece(Square);
-}
-
 Piece* ChessEngine::GetPiece(int Square) const
 {
-	if (Square < 0 || Square > 63)
-	{
-		return nullptr;
-	}
+	ASSERT((uint8_t)Square <= 63, nullptr);
 
-	for (const auto& Piece : Pieces)
-	{
-		if (Piece->Square == Square)
-		{
-			return Piece.get();
-		}
-	}
-
-	return nullptr;
+	return Squares[Square];
 }
 
 int ChessEngine::GetSquare(const ImVec2& Pos) const
 {
-	int Square = -1;
+	const ImVec2 Size = ImGui::GetWindowSize();
 
-	IterateSquares([Pos, &Square](const ImVec2& Min, const ImVec2& Max, int Rank, int File) -> bool
-		{
-			if (Pos.x >= Min.x && Pos.x <= Max.x &&
-				Pos.y >= Min.y && Pos.y <= Max.y)
-			{
-				Square = Piece::RankFileToSquare(Rank, File);
-				return false;
-			}
+	const ImVec2 Center = Size / 2.f;
+	const ImVec2 SquareSize = GetSquareSize();
 
-			return true;
-		});
+	int Rank = (int)((Pos.x - Center.x) / SquareSize.x + 4.f);
+	int File = (int)((Pos.y - Center.y) / SquareSize.y + 4.f);
 
-	return Square;
+	return Piece::RankFileToSquare(Rank, File);
 }
 
 std::pair<ImVec2, ImVec2> ChessEngine::GetSquare(std::pair<int, int> RankFile) const
@@ -1807,7 +2075,7 @@ void ChessEngine::DrawPiece(const ImVec2& Pos, const ImVec2& PieceSize, PieceTyp
 
 void ChessEngine::DrawPiece(int Square, PieceType Type, PieceColor Color) const
 {
-	ASSERT(Square >= 0 && Square <= 63);
+	ASSERT((uint8_t)Square <= 63);
 
 	const ImVec2 Size = ImGui::GetWindowSize();
 
@@ -1872,12 +2140,10 @@ void ChessEngine::DrawGrid() const
 
 			DrawList->AddRectFilled(Min, Max, Color);
 
-#ifdef _DEBUG
-			File = 7 - File;
+			File = 7 - File; // flip file
 
 			ImGui::SetCursorScreenPos(Min);
 			ImGui::TextColored(ImVec4(0.f, 0.f, 0.f, 1.f), Piece::RankFileToAlgebraic({ Rank, File }).data());
-#endif
 
 			return true;
 		});
@@ -1904,7 +2170,7 @@ void ChessEngine::DrawSelectedPiece() const
 
 	if (SelectedPiece->Square != LastMove.Move.OldSquare && SelectedPiece->Square != LastMove.Move.NewSquare)
 	{
-		const auto [Min, Max] = GetSquare(Piece::RotateCCW(Piece::SquareToRankFile(SelectedPiece->Square)));
+		const auto [Min, Max] = GetSquare(Piece::RotateCCW(SelectedPiece->Square));
 
 		DrawList->AddRectFilled(Min, Max, COL_SELECTED_SQUARE);
 	}
@@ -1933,24 +2199,24 @@ void ChessEngine::DrawMoveInfo() const
 	if constexpr (bDrawAvailableCastlingRights)
 	{
 #ifdef _DEBUG
-		if (AvailableCastlingRights.KingSide[0].Move.IsAllowed())
+		if (AvailableCastlingRights & WhiteKingSide)
 		{
-			MarkedSquares.push_back(AvailableCastlingRights.KingSide[0].Move.NewSquare);
+			MarkedSquares.push_back(StaticCastlingRights::KingSide[White].Move.NewSquare);
 		}
 
-		if (AvailableCastlingRights.KingSide[1].Move.IsAllowed())
+		if (AvailableCastlingRights & BlackKingSide)
 		{
-			MarkedSquares.push_back(AvailableCastlingRights.KingSide[1].Move.NewSquare);
+			MarkedSquares.push_back(StaticCastlingRights::KingSide[Black].Move.NewSquare);
 		}
 
-		if (AvailableCastlingRights.QueenSide[0].Move.IsAllowed())
+		if (AvailableCastlingRights & WhiteQueenSide)
 		{
-			MarkedSquares.push_back(AvailableCastlingRights.QueenSide[0].Move.NewSquare);
+			MarkedSquares.push_back(StaticCastlingRights::QueenSide[White].Move.NewSquare);
 		}
 
-		if (AvailableCastlingRights.QueenSide[1].Move.IsAllowed())
+		if (AvailableCastlingRights & BlackQueenSide)
 		{
-			MarkedSquares.push_back(AvailableCastlingRights.QueenSide[1].Move.NewSquare);
+			MarkedSquares.push_back(StaticCastlingRights::QueenSide[Black].Move.NewSquare);
 		}
 #endif
 	}
@@ -1961,7 +2227,7 @@ void ChessEngine::DrawMoveInfo() const
 
 	if (bDrawEnpassantSquare && EnpassantSquare != -1)
 	{
-		const auto [EnpassantSquareMin, EnpassantSquareMax] = GetSquare(Piece::RotateCCW(Piece::SquareToRankFile(EnpassantSquare)));
+		const auto [EnpassantSquareMin, EnpassantSquareMax] = GetSquare(Piece::RotateCCW(EnpassantSquare));
 
 		DrawList->AddRectFilled(EnpassantSquareMin, EnpassantSquareMax, COL_ENPASSANT_SQUARE);
 	}
@@ -1979,15 +2245,15 @@ void ChessEngine::DrawMoveInfo() const
 	if (MoveGenerationTestPossibleMoves != -1)
 	{
 		ImGui::SetCursorScreenPos(ImVec2(CurrentMoveSquareMin.x - PADDING.x - 100.f, ImGui::GetCursorPosY()));
-		ImGui::Text("MoveGenerationTestPossibleMoves: %d", MoveGenerationTestPossibleMoves);
+		ImGui::Text("MoveGenerationTestPossibleMoves: %llu", MoveGenerationTestPossibleMoves);
 	}
 
 	// LastMove
 
 	if (LastMove.Move.IsValid())
 	{
-		const auto [LastMoveOldSquareMin, LastMoveOldSquareMax] = GetSquare(Piece::RotateCCW(Piece::SquareToRankFile(LastMove.Move.OldSquare)));
-		const auto [LastMoveNewSquareMin, LastMoveNewSquareMax] = GetSquare(Piece::RotateCCW(Piece::SquareToRankFile(LastMove.Move.NewSquare)));
+		const auto [LastMoveOldSquareMin, LastMoveOldSquareMax] = GetSquare(Piece::RotateCCW(LastMove.Move.OldSquare));
+		const auto [LastMoveNewSquareMin, LastMoveNewSquareMax] = GetSquare(Piece::RotateCCW(LastMove.Move.NewSquare));
 
 		DrawList->AddRectFilled(LastMoveOldSquareMin, LastMoveOldSquareMax, COL_SELECTED_SQUARE);
 		DrawList->AddRectFilled(LastMoveNewSquareMin, LastMoveNewSquareMax, COL_SELECTED_SQUARE);

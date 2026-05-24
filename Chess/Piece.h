@@ -74,8 +74,8 @@ struct Piece
 
 	static constexpr std::pair<int, int> SquareToRankFile(int Square);
 
-	static constexpr int RankFileToSquare(int Rank, int File);
-	static constexpr int RankFileToSquare(std::pair<int, int> RankFile);
+	static constexpr int8_t RankFileToSquare(int Rank, int File);
+	static constexpr int8_t RankFileToSquare(std::pair<int, int> RankFile);
 
 	static constexpr std::array<char, 3> SquareToAlgebraic(int Square);
 	static constexpr std::array<char, 3> RankFileToAlgebraic(std::pair<int, int> RankFile);
@@ -85,8 +85,8 @@ struct Piece
 	static constexpr std::pair<int, int> RotateCW(std::pair<int, int> RankFile);	// only use in graphic contexts
 	static constexpr std::pair<int, int> RotateCCW(std::pair<int, int> RankFile);	// only use in graphic contexts
 
-	static constexpr int RotateCW(int Square);	// only use in graphic contexts
-	static constexpr int RotateCCW(int Square);	// only use in graphic contexts
+	static constexpr int8_t RotateCW(int Square);	// only use in graphic contexts
+	static constexpr int8_t RotateCCW(int Square);	// only use in graphic contexts
 
 	static constexpr const char* ColorToString(PieceColor Color);
 };
@@ -99,14 +99,14 @@ constexpr std::pair<int, int> Piece::SquareToRankFile(int Square)
 	return std::pair{ Rank, File };
 }
 
-constexpr int Piece::RankFileToSquare(int Rank, int File)
+constexpr int8_t Piece::RankFileToSquare(int Rank, int File)
 {
 	int Square = Rank * 8 + File;
 
 	return Square;
 }
 
-constexpr int Piece::RankFileToSquare(std::pair<int, int> RankFile)
+constexpr int8_t Piece::RankFileToSquare(std::pair<int, int> RankFile)
 {
 	const auto [Rank, File] = RankFile;
 
@@ -148,14 +148,14 @@ constexpr std::pair<int, int> Piece::RotateCCW(std::pair<int, int> RankFile)
 	return { File, 7 - Rank };
 }
 
-constexpr int Piece::RotateCW(int Square)
+constexpr int8_t Piece::RotateCW(int Square)
 {
 	const auto [Rank, File] = RotateCW(SquareToRankFile(Square));
 
 	return RankFileToSquare(Rank, File);
 }
 
-constexpr int Piece::RotateCCW(int Square)
+constexpr int8_t Piece::RotateCCW(int Square)
 {
 	const auto [Rank, File] = RotateCCW(SquareToRankFile(Square));
 

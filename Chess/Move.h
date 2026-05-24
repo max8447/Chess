@@ -6,15 +6,15 @@
 
 struct SimpleMove
 {
-	int OldSquare;
-	int NewSquare;
+	int8_t OldSquare;
+	int8_t NewSquare;
 
-	SimpleMove()
-		: OldSquare(-1), NewSquare(-1)
+	constexpr SimpleMove()
+		: OldSquare((int8_t)-1), NewSquare((int8_t)-1)
 	{}
 
-	SimpleMove(int InOldSquare, int InNewSquare)
-		: OldSquare(InOldSquare), NewSquare(InNewSquare)
+	constexpr SimpleMove(int InOldSquare, int InNewSquare)
+		: OldSquare((int8_t)InOldSquare), NewSquare((int8_t)InNewSquare)
 	{}
 
 	const bool IsValid() const // invalid moves (squares are -1)
@@ -34,11 +34,12 @@ struct SimpleMove
 
 	void Invalidate() // set *only* NewSquare to -1
 	{
+		OldSquare = -1;
 		NewSquare = -1;
 	}
 };
 
-enum SpecialMoveType
+enum SpecialMoveType : uint8_t
 {
 	None					= 0,
 	Capture					= 1 << 1,
@@ -56,26 +57,69 @@ struct SpecialMove
 	SpecialMoveType Type;
 	SimpleMove OtherPieceMove;
 
-	int EnpassantSquare = -1;
+	union
+	{
+		int8_t EnpassantSquare;
+		PieceType PromotedPieceType;
+		int8_t bIsEnpassant; // -1 = false, everything else = true
+	} ExtraInfo{ -1 };
 
-	Piece* MovedPiece = nullptr;
-	Piece* CapturedPiece = nullptr;
-	Piece* CastledRook = nullptr;
+	Piece* OtherPiece = nullptr;
 
-	PieceType PromotedPieceType = Null;
-	bool bIsEnpassant = false;
-
-	SpecialMove()
+	constexpr SpecialMove()
 		: Move(), Type(None), OtherPieceMove()
 	{}
 
-	SpecialMove(SimpleMove InMove, SpecialMoveType InType, SimpleMove InOtherPieceMove)
+	constexpr SpecialMove(SimpleMove&& InMove)
+		: Move(InMove), Type(None), OtherPieceMove()
+	{}
+
+	constexpr SpecialMove(SimpleMove InMove, SpecialMoveType InType, SimpleMove InOtherPieceMove)
 		: Move(InMove), Type(InType), OtherPieceMove(InOtherPieceMove)
 	{}
 
+	static inline size_t CopyConstructorCalls = 0;
+	static inline size_t MoveConstructorCalls = 0;
+	static inline size_t CopyAssignmentCalls = 0;
+	static inline size_t MoveAssignmentCalls = 0;
+
+	//SpecialMove(const SpecialMove& Other)
+	//{
+	//	CopyConstructorCalls++;
+	//	memcpy(this, &Other, sizeof(*this));
+	//}
+
+	//SpecialMove(SpecialMove&& Other) noexcept
+	//{
+	//	MoveConstructorCalls++;
+	//	memcpy(this, &Other, sizeof(*this));
+	//}
+
+	//SpecialMove& operator=(const SpecialMove& Other)
+	//{
+	//	CopyAssignmentCalls++;
+	//	memcpy(this, &Other, sizeof(*this));
+	//	return *this;
+	//}
+
+	//SpecialMove& operator=(SpecialMove&& Other) noexcept
+	//{
+	//	MoveAssignmentCalls++;
+	//	memcpy(this, &Other, sizeof(*this));
+	//	return *this;
+	//}
+
+	static void ResetCounters()
+	{
+		CopyConstructorCalls = 0;
+		MoveConstructorCalls = 0;
+		CopyAssignmentCalls = 0;
+		MoveAssignmentCalls = 0;
+	}
+
 	const bool IsValid() const
 	{
-		bool bIsValid = Move.IsValid() && MovedPiece;
+		bool bIsValid = Move.IsValid();
 
 		if (Type & Castle)
 		{
@@ -84,17 +128,17 @@ struct SpecialMove
 
 		if (Type & Capture)
 		{
-			bIsValid = bIsValid && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1 && CapturedPiece;
+			bIsValid = bIsValid && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1 && OtherPiece;
 		}
 
 		if (Type & PawnPromotion)
 		{
-			bIsValid = bIsValid && MovedPiece->Type == Pawn /* && PromotedPieceType != Null */;
+			bIsValid = bIsValid /* && ExtraInfo.PromotedPieceType != Null */;
 		}
 
 		if (Type & PawnDoublePush)
 		{
-			bIsValid = bIsValid && EnpassantSquare != -1;
+			bIsValid = bIsValid && ExtraInfo.EnpassantSquare != -1;
 		}
 
 		return bIsValid;
@@ -102,7 +146,7 @@ struct SpecialMove
 
 	const bool IsZero() const // old square is the same as new square and type is None
 	{
-		return Move.OldSquare == Move.NewSquare && Type == None;
+		return Move.IsZero() && Type == None;
 	}
 
 	const bool IsAllowed() const // is valid AND is NOT zero
