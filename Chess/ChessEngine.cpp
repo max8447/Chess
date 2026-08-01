@@ -15,16 +15,6 @@
 #define COL_PAWNPROMOTION_BG IM_COL32_WHITE
 #define COL_ENDSCREEN_OVERLAY IM_COL32(0, 0, 0, 127)
 
-#ifdef MAX_SPEED
-#define DO_SQUARES_CHECK()
-#else // MAX_SPEED
-#define DO_SQUARES_CHECK()														\
-	for (const auto& Piece : Pieces)											\
-		if (Piece->Square != -1) ASSERT(Squares[Piece->Square] == Piece.get());
-#endif // MAX_SPEED
-
-#define DO_SQUARES_CHECK()
-
 constexpr bool bDoMoveGenerationTest = true;
 static int MoveGenerationDepth = 4;
 
@@ -330,8 +320,6 @@ void ChessEngine::LoadFENPosition(const char* InFENString)
 
 	ASSERT(GamePosition.GetKingSquare(White) && "No white king on board!");
 	ASSERT(GamePosition.GetKingSquare(Black) && "No black king on board!");
-
-	DO_SQUARES_CHECK();
 
 	GamePosition.CalculateCheckData(GamePosition.GameState.CurrentMove);
 
@@ -840,8 +828,6 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 		{
 			// don't allow the move if it leaves us in check after
 
-			DO_SQUARES_CHECK();
-
 			UndoInfo UndoInfo;
 			MakeMove(MovingPiece, *OutSpecialMove, UndoInfo);
 
@@ -866,8 +852,6 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 			}
 
 			UnMakeMove(MovingPiece, *OutSpecialMove, UndoInfo);
-
-			DO_SQUARES_CHECK();
 		}
 	}
 
@@ -1527,10 +1511,6 @@ int ChessEngine::SearchBestMove(SpecialMove& OutBestMove, PieceColor Color, int 
 
 		Piece* MovingPiece = GetMovedPiece(Move, false);
 
-#ifdef _DEBUG
-		DO_SQUARES_CHECK();
-#endif
-
 		UndoInfo UndoInfo;
 		MakeMove(MovingPiece, Move, UndoInfo);
 
@@ -1548,10 +1528,6 @@ int ChessEngine::SearchBestMove(SpecialMove& OutBestMove, PieceColor Color, int 
 		}
 
 		UnMakeMove(MovingPiece, Move, UndoInfo);
-
-#ifdef _DEBUG
-		DO_SQUARES_CHECK();
-#endif
 
 		CurrentHash = OldHash;
 		GamePosition.GameState.EnpassantSquare = OldEnpassantSquare;
@@ -1635,8 +1611,6 @@ size_t ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot
 		volatile uint64_t OldPieceBoard = GamePosition.Bitboards.Pieces[MovedPiece->Color][MovedPiece->Type];
 		volatile uint64_t OldOccupancyPieceBoard = GamePosition.Bitboards.Occupied[MovedPiece->Color];
 		volatile uint64_t OldOccupancyBoard = GamePosition.Bitboards.AllOccupied;
-
-		DO_SQUARES_CHECK();
 #endif
 
 		UndoInfo UndoInfo;
@@ -1687,8 +1661,6 @@ size_t ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot
 		UnMakeMove(MovedPiece, Move, UndoInfo);
 
 #ifdef _DEBUG
-		DO_SQUARES_CHECK();
-
 		volatile uint64_t NewPieceBoard = GamePosition.Bitboards.Pieces[MovedPiece->Color][MovedPiece->Type]; // what if it's a pawn promotion...
 		volatile uint64_t NewOccupancyPieceBoard = GamePosition.Bitboards.Occupied[MovedPiece->Color];
 		volatile uint64_t NewOccupancyBoard = GamePosition.Bitboards.AllOccupied;
