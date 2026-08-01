@@ -3,6 +3,7 @@
 #include "Includes.h"
 
 #include "Piece.h"
+#include "Attacks.h"
 
 struct Bitboard
 {
@@ -11,52 +12,88 @@ struct Bitboard
 	uint64_t Occupied[PieceColor_Count];
 	uint64_t AllOccupied;
 
-	void Init(const std::vector<std::unique_ptr<Piece>>& BoardPieces);
-
 	void MoveTo(PieceColor Color, PieceType Type, int OldSquare, int NewSquare);
+
+	template<PieceColor Color, typename... PieceTypes>
+	uint64_t GetPieces(PieceTypes... Types)
+	{
+		return (Pieces[Color][Types] | ...);
+	}
+
+	template<typename... PieceTypes>
+	uint64_t GetPieces(PieceTypes... Types)
+	{
+		return GetPieces<White, PieceTypes...>(Types...)
+			|  GetPieces<Black, PieceTypes...>(Types...);
+	}
 };
 
-static inline bool IsBitSet(const uint64_t Bitboard, int Square)
+static inline constexpr uint64_t ToBitboard(int Square)
 {
 #ifdef _DEBUG
 	ASSERT((uint8_t)Square <= 63, false);
 #endif
 
-	return (Bitboard & (1ull << Square)) != 0;
+	return 1ull << Square;
 }
 
-static inline void SetBit(uint64_t& Bitboard, int Square)
+static inline constexpr bool AreMultipleBitsSet(const uint64_t Bitboard)
+{
+	return Bitboard & (Bitboard - 1);
+}
+
+static inline constexpr bool IsBitSet(const uint64_t Bitboard, int Square)
+{
+#ifdef _DEBUG
+	ASSERT((uint8_t)Square <= 63, false);
+#endif
+
+	return (Bitboard & ToBitboard(Square)) != 0;
+}
+
+static inline constexpr void SetBit(uint64_t& Bitboard, int Square)
 {
 #ifdef _DEBUG
 	ASSERT((uint8_t)Square <= 63);
 	ASSERT(!IsBitSet(Bitboard, Square));
 #endif
 
-	Bitboard |= 1ull << Square;
+	Bitboard |= ToBitboard(Square);
 }
 
-static inline void ClearBit(uint64_t& Bitboard, int Square)
+static inline constexpr void ClearBit(uint64_t& Bitboard, int Square)
 {
 #ifdef _DEBUG
 	ASSERT((uint8_t)Square <= 63);
 	ASSERT(IsBitSet(Bitboard, Square));
 #endif
 
-	Bitboard &= ~(1ull << Square);
+	Bitboard &= ~ToBitboard(Square);
 }
 
 static char* BitboardToString(const uint64_t Bitboard)
 {
 	constexpr int Bits = sizeof(Bitboard) * 8 - 1;
 
-	char* Out = new char[Bits + 10];
+	char* Out = new char[(Bits + 10) * 2];
 	int Idx = 0;
+
+	Out[Idx++] = '\n';
 
 	for (int i = Bits; i >= 0; i--)
 	{
-		Out[Idx++] = ((Bitboard >> i) & 1) + '0';
+		auto [Rank, File] = Piece::SquareToRankFile(i);
+		File = 7 - File;
+
+		const int SquareIdx = Piece::RankFileToSquare({ Rank, File });
+
+		Out[Idx++] = ((Bitboard >> SquareIdx) & 1) + '0';
 
 		if (i % 8 == 0)
+		{
+			Out[Idx++] = '\n';
+		}
+		else
 		{
 			Out[Idx++] = ' ';
 		}

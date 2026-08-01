@@ -12,7 +12,7 @@ enum PieceType : int8_t
 	Rook = 4,
 	Pawn = 5,
 
-	PieceType_Count,
+	PieceType_Count = 6,
 };
 
 constexpr int PieceValues[] = { // has to match ordering of enum above
@@ -29,8 +29,13 @@ enum PieceColor : uint8_t
 	White,
 	Black,
 
-	PieceColor_Count,
+	PieceColor_Count = 2,
 };
+
+constexpr PieceColor operator~(PieceColor Color) // flip color
+{
+	return (PieceColor)(1 - Color);
+}
 
 enum AlgebraicSquare : uint8_t
 {
@@ -43,8 +48,25 @@ enum AlgebraicSquare : uint8_t
 	a7, b7, c7, d7, e7, f7, g7, h7,
 	a8, b8, c8, d8, e8, f8, g8, h8,
 
-	AlgebraicSquare_Count,
+	AlgebraicSquare_Count = 64,
 };
+
+enum Direction : int8_t
+{
+	North		=  8,
+	South		= -8,
+	East		=  1,
+	West		= -1,
+	NorthEast	= North + East,
+	NorthWest	= North + West,
+	SouthEast	= South + East,
+	SouthWest	= South + West,
+};
+
+constexpr Direction operator-(Direction Dir)
+{
+	return (Direction)(-(int)Dir);
+}
 
 struct Piece
 {
@@ -54,14 +76,14 @@ struct Piece
 
 	Piece() = delete;
 
-	Piece(int InSquare, PieceType InType, PieceColor InColor)
+	constexpr Piece(int InSquare, PieceType InType, PieceColor InColor)
 		: Square(InSquare)
 		, Type(InType)
 		, Color(InColor)
 	{
 	}
 
-	Piece(const Piece& InPiece)
+	constexpr Piece(const Piece& InPiece)
 		: Square(InPiece.Square)
 		, Type(InPiece.Type)
 		, Color(InPiece.Color)

@@ -141,7 +141,7 @@ constexpr std::array<int, 9> Piece::GetAvailableMoves(PieceType Type)
 		break;
 	case Pawn:
 		AllowedMoves = {
-			0, 1, 0,
+			0, 1, 0, // has en passant and double push implementation
 			0, 0, 0,
 			0, 0, 0
 		};

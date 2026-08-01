@@ -158,7 +158,9 @@
     <ClCompile Include="ChessEngine.cpp" />
     <ClCompile Include="Gui.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="MoveGen.cpp" />
     <ClCompile Include="Piece.cpp" />
+    <ClCompile Include="Position.cpp" />
     <ClCompile Include="Transposition.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -170,8 +172,11 @@
     <ClInclude Include="ImageHelper.h" />
     <ClInclude Include="Includes.h" />
     <ClInclude Include="Move.h" />
+    <ClInclude Include="MoveGen.h" />
     <ClInclude Include="Piece.h" />
+    <ClInclude Include="Position.h" />
     <ClInclude Include="Square.h" />
+    <ClInclude Include="State.h" />
     <ClInclude Include="Transposition.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

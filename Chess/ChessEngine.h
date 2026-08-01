@@ -7,11 +7,17 @@
 #include "Move.h"
 #include "CastlingRights.h"
 #include "Transposition.h"
-#include "Bitboard.h"
-#include "Attacks.h"
+#include "Position.h"
 
 #define SEARCHBESTMOVE_MIN -999999
 #define SEARCHBESTMOVE_MAX 999999
+
+struct UndoInfo
+{
+	int8_t EnpassantSquare = -1;
+	CastlingRights CastlingRights = NoCastling;
+	Piece* CapturedPiece = nullptr;
+};
 
 class ChessEngine
 {
@@ -22,7 +28,7 @@ private:
 	const char* FENString;
 
 	std::vector<std::unique_ptr<Piece>> Pieces;
-	mutable Square Squares[64]; // mutable for now
+	mutable Square Squares[AlgebraicSquare_Count]; // mutable for now
 
 	ImVec2 SelectedPieceMouseOffset = { NAN, NAN };
 	Piece* SelectedPiece = nullptr;
@@ -30,32 +36,23 @@ private:
 	std::vector<SpecialMove> AllAvailableMoves;
 	std::vector<SpecialMove> AvailableMoves;
 	size_t NumPossibleMoves = -1;
-	bool bGameEnded = false;
 
-	// game state
+	Position GamePosition;
 
-	PieceColor CurrentMove = White; // white starts by default
-	mutable CastlingRights AvailableCastlingRights; // mutable for now
-	mutable int EnpassantSquare = -1;				// mutable for now
-	int PawnPromotionSquare = -1;
-	int HalfMoveClock = 0;
-	int FullMoveCounter = 1;
 	SpecialMove LastMove = SpecialMove{};
 
 	mutable uint64_t CurrentHash;
 	mutable TranspositionTable TranspositionTable;
-
-	mutable Bitboard Bitboard;
-	Attacks Attacks;
 
 	// TODO: make these selectable
 	
 	PieceColor PlayerColor = White;
 	PieceColor BotColor = Black;
 
-	bool bEnableBot = true;
+	bool bEnableBot = false;
 
 	mutable size_t MoveGenerationTestPossibleMoves = -1;
+	mutable bool bHasEverDrawn = false;
 
 #ifdef _DEBUG
 	mutable std::vector<int> MarkedSquares; // cleared at the start of Draw() and drawn at the end of Draw()
@@ -69,8 +66,6 @@ public:
 	// expects valid FEN string (no validity checking done)
 	void LoadFENPosition(const char* InFENString);
 	char* GenerateFENPosition() const;
-
-	void InitBitboard();
 
 private:
 
@@ -86,15 +81,6 @@ private:
 	void GetScoredMoves(Piece* TargetPiece, std::vector<ScoredMove>* OutScoredMoves, bool bAllowPseudolegalMoves = false) const;
 	void GetAvailableMoves(Piece* TargetPiece, std::vector<SpecialMove>* OutAvailableMoves, bool bAllowPseudolegalMoves = false) const;
 
-	void GeneratePawnMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const;
-	void GenerateKnightMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const;
-	void GenerateBishopMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const;
-	void GenerateRookMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const;
-	void GenerateQueenMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const;
-	void GenerateKingMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const;
-
-	void GenerateLegalMoves(PieceColor Color, std::vector<SpecialMove>* OutAvailableMoves) const;
-
 	void CalculatePossibleMoves();
 
 	bool IsAllowedMove(
@@ -104,17 +90,16 @@ private:
 		SpecialMove* OutSpecialMove
 	) const;
 
-	void MakeMove(const SpecialMove& Move, CastlingRights* OutCastlingRights = nullptr, int* OutEnpassantSquare = nullptr) const;
-	void UnMakeMove(const SpecialMove& Move) const;
+	void MakeMove(Piece* MovedPiece, const SpecialMove& Move, UndoInfo& UndoInfo) const;
+	void UnMakeMove(Piece* MovedPiece, const SpecialMove& Move, UndoInfo& UndoInfo) const;
 
-	void MakeBitboardsMove(Piece* MovedPiece, const SpecialMove& Move) const;
-	void UnMakeBitboardsMove(Piece* MovedPiece, const SpecialMove& Move) const;
+	void MakeBitboardsMove(Piece* MovedPiece, Piece* OtherPiece, const SpecialMove& Move) const;
+	void UnMakeBitboardsMove(Piece* MovedPiece, Piece* OtherPiece, const SpecialMove& Move) const;
 
 	Piece* GetMovedPiece(const SpecialMove& Move, bool bHasMoveHappened) const;
-	Piece* GetOtherPiece(const SpecialMove& Move, bool bHasMoveHappened) const;
+	Piece* GetCapturedPiece(const SpecialMove& Move) const;
+	Piece* GetCastlingRook(CastlingRights CastlingRight, PieceColor Color, SimpleMove KingMove, bool bHasMoveHappened) const;
 
-	bool IsInCheck(PieceColor Color) const;
-	bool IsAttacked(int AttackedSquare, PieceColor Color) const;
 	bool IsAttacked(Piece* AttackedPiece) const;
 
 	// universal move-making functions
@@ -124,10 +109,15 @@ private:
 	void ToggleMove();
 	void FinishMove(Piece* MovingPiece, const SpecialMove& Move);
 	void TryMoveTo(Piece* MovingPiece, int NewSquare);
-	void CapturePiece(Piece* CapturedPiece);
 	void PromotePawn(Piece* PromotingPawn, PieceType NewPieceType);
 
-	// bot functions
+	void MovePieceTo(Piece* MovedPiece, SimpleMove Move) const;
+	void UnMovePieceTo(Piece* MovedPiece, SimpleMove Move) const;
+
+	void CapturePiece(Piece* CapturedPiece) const;
+	void UnCapturePiece(Piece* CapturedPiece) const;
+
+	// bot/movegen functions
 
 	void HandleBotPawnPromotion();
 	void GenerateMove();
@@ -135,6 +125,7 @@ private:
 	int GetMobility(PieceColor Color) const;
 	int EvaluatePosition() const;
 	int GuessMoveScore(const SpecialMove& Move) const;
+	void OrderMoves(std::vector<SpecialMove>* Moves) const;
 	int SearchBestMove(SpecialMove& OutBestMove, PieceColor Color, int Depth, int Alpha = SEARCHBESTMOVE_MIN, int Beta = SEARCHBESTMOVE_MAX) const;
 	size_t MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot);
 
@@ -150,6 +141,8 @@ private:
 	void SelectPiece(const ImVec2& Pos);
 
 	void HandleInput();
+
+	bool IsCapture(const SpecialMove& Move) const; // assumes Move has been set up correctly.
 
 	Piece* GetPiece(int Square) const;
 

@@ -10,6 +10,10 @@ struct Attacks
 	uint64_t KnightAttacks[AlgebraicSquare_Count];
 	uint64_t KingAttacks[AlgebraicSquare_Count];
 
+	uint64_t LineThrough[AlgebraicSquare_Count][AlgebraicSquare_Count];
+	uint64_t RayThrough[AlgebraicSquare_Count][AlgebraicSquare_Count];
+	uint64_t SquaresBetween[AlgebraicSquare_Count][AlgebraicSquare_Count];
+
 private:
 
 	uint64_t RookMasks[AlgebraicSquare_Count];
@@ -24,11 +28,13 @@ public:
 
 	void Init();
 
+	uint64_t GetPseudoAttacks(int Square, PieceType Type, PieceColor Color = PieceColor_Count, const uint64_t AllOccupiedBitboard = 0) const;
+
 	uint64_t GetBishopMoves(int Square, const uint64_t AllOccupiedBitboard, const uint64_t FriendlyPiecesBitboard) const;
 	uint64_t GetRookMoves(int Square, const uint64_t AllOccupiedBitboard, const uint64_t FriendlyPiecesBitboard) const;
 	uint64_t GetQueenMoves(int Square, const uint64_t AllOccupiedBitboard, const uint64_t FriendlyPiecesBitboard) const;
 
-	bool IsAnyPieceAttacking(int Square, PieceColor Color, PieceType Type,
+	bool IsPieceAttacking(int Square, PieceColor Color, PieceType Type,
 		uint64_t AttackingPiecesBitboard, const uint64_t AllOccupiedBitboard, const uint64_t FriendlyPiecesBitboard) const;
 };
 

@@ -4,7 +4,7 @@
 
 #include "Piece.h"
 
-struct SimpleMove
+struct SimpleMove															// can condense into 12 bits
 {
 	int8_t OldSquare;
 	int8_t NewSquare;
@@ -32,50 +32,48 @@ struct SimpleMove
 		return IsValid() && !IsZero();
 	}
 
-	void Invalidate() // set *only* NewSquare to -1
+	void Invalidate() // set OldSquare and NewSquare to -1
 	{
 		OldSquare = -1;
 		NewSquare = -1;
 	}
 };
 
-enum SpecialMoveType : uint8_t
+enum SpecialMoveType : uint8_t												// can condense into 3 bits
 {
 	None					= 0,
-	Capture					= 1 << 1,
-	Castle					= 1 << 2,
-	PawnPromotion			= 1 << 3,
-	PawnDoublePush			= 1 << 4,
+	Capture					= 1 << 0,
+	Castle					= 1 << 1,
+	PawnPromotion			= 1 << 2,
 };
 
 ENUM_OPERATORS(SpecialMoveType);
 
-struct SpecialMove
+struct SpecialMove															// can condense into 29 bits + 8 bytes
 {
 	SimpleMove Move;
 
 	SpecialMoveType Type;
-	SimpleMove OtherPieceMove;
+	SimpleMove OtherPieceMove = {};
 
 	union
 	{
-		int8_t EnpassantSquare;
-		PieceType PromotedPieceType;
-		int8_t bIsEnpassant; // -1 = false, everything else = true
-	} ExtraInfo{ -1 };
+		int8_t bIsEnpassant; // -1 = false, everything else = true			// can condense into 1 bit
+		PieceType PromotedPieceType;										// can condense into 2 bits
+	} ExtraInfo{ -1 };														// can condense into max(1, 2) = 2 bits
 
-	Piece* OtherPiece = nullptr;
+	// Piece* OtherPiece = nullptr;
 
 	constexpr SpecialMove()
-		: Move(), Type(None), OtherPieceMove()
+		: Move(), Type(None), OtherPieceMove()// , OtherPiece(nullptr)
 	{}
 
 	constexpr SpecialMove(SimpleMove&& InMove)
-		: Move(InMove), Type(None), OtherPieceMove()
+		: Move(InMove), Type(None), OtherPieceMove()// , OtherPiece(nullptr)
 	{}
 
-	constexpr SpecialMove(SimpleMove InMove, SpecialMoveType InType, SimpleMove InOtherPieceMove)
-		: Move(InMove), Type(InType), OtherPieceMove(InOtherPieceMove)
+	constexpr SpecialMove(SimpleMove InMove, SpecialMoveType InType, SimpleMove InOtherPieceMove = {}, Piece* InOtherPiece = nullptr, int8_t InExtraInfo = -1)
+		: Move(InMove), Type(InType), OtherPieceMove(InOtherPieceMove)/*, OtherPiece(InOtherPiece) */, ExtraInfo(InExtraInfo)
 	{}
 
 	static inline size_t CopyConstructorCalls = 0;
@@ -128,17 +126,12 @@ struct SpecialMove
 
 		if (Type & Capture)
 		{
-			bIsValid = bIsValid && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1 && OtherPiece;
+			bIsValid = bIsValid && OtherPieceMove.OldSquare != -1 && OtherPieceMove.NewSquare == -1;
 		}
 
 		if (Type & PawnPromotion)
 		{
 			bIsValid = bIsValid /* && ExtraInfo.PromotedPieceType != Null */;
-		}
-
-		if (Type & PawnDoublePush)
-		{
-			bIsValid = bIsValid && ExtraInfo.EnpassantSquare != -1;
 		}
 
 		return bIsValid;

@@ -50,9 +50,11 @@ inline bool operator>=(const ImVec2& other) const { return x >= other.x && y >= 
 #ifdef MAX_SPEED
 #define ASSERT(...)
 #else // MAX_SPEED
-#define ASSERT(cond, returnvalue) if (!(cond)) { INT3; return returnvalue; }
+#define ASSERT(cond, ...) if (!(cond)) { INT3; return __VA_ARGS__; }
 #endif // MAX_SPEED
 #endif // _DEBUG
+
+#define STATIC_ASSERT static_assert
 
 #define ENUM_OPERATORS(EEnumClass)																																		\
 																																										\
@@ -73,10 +75,15 @@ inline constexpr EEnumClass& operator|=(EEnumClass& Left, int Right)												
 	return (EEnumClass&)((std::underlying_type<EEnumClass>::type&)(Left) |= Right);																						\
 }
 
-// https://stackoverflow.com/questions/72336579/good-way-of-popping-the-least-signifigant-bit-and-returning-the-index
-static int pop_lsb(uint64_t& b)
+static inline constexpr int lsb(uint64_t b)
 {
-    int idx = std::countr_zero(b);
+	return std::countr_zero(b);
+}
+
+// https://stackoverflow.com/questions/72336579/good-way-of-popping-the-least-signifigant-bit-and-returning-the-index
+static inline constexpr int pop_lsb(uint64_t& b)
+{
+    int idx = lsb(b);
     b &= b - 1;
     return idx;
 }

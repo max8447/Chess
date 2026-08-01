@@ -16,6 +16,7 @@ namespace StaticCastlingRights
 	};
 };
 
+// https://github.com/official-stockfish/Stockfish/blob/master/src/types.h#L125
 enum CastlingRights : uint8_t
 {
 	WhiteKingSide = 1 << 0,
@@ -30,6 +31,14 @@ enum CastlingRights : uint8_t
 
 	NoCastling = 0,
 	AnyCastling = WhiteCastling | BlackCastling,
+
+	CastlingRights_Count = 16,
 };
 
 ENUM_OPERATORS(CastlingRights);
+
+// https://github.com/official-stockfish/Stockfish/blob/master/src/types.h#L378
+constexpr CastlingRights operator&(PieceColor Color, CastlingRights CastlingRight)
+{
+	return CastlingRights((Color == White ? WhiteCastling : BlackCastling) & CastlingRight);
+}

@@ -23,7 +23,7 @@ static constexpr uint64_t PawnMask(int Square, PieceColor Color)
 			continue;
 		}
 
-		Mask |= 1ull << Piece::RankFileToSquare(CurrentRank, CurrentFile);
+		Mask |= ToBitboard(Piece::RankFileToSquare(CurrentRank, CurrentFile));
 	}
 
 	return Mask;
@@ -49,7 +49,7 @@ static constexpr uint64_t KnightMask(int Square)
 			continue;
 		}
 
-		Mask |= 1ull << Piece::RankFileToSquare(CurrentRank, CurrentFile);
+		Mask |= ToBitboard(Piece::RankFileToSquare(CurrentRank, CurrentFile));
 	}
 
 	return Mask;
@@ -63,22 +63,22 @@ static constexpr uint64_t BishopMask(int Square)
 
 	for (int CurrentRank = Rank + 1, CurrentFile = File + 1; CurrentRank <= 6 && CurrentFile <= 6; CurrentRank++, CurrentFile++)
 	{
-		Mask |= 1ull << Piece::RankFileToSquare(CurrentRank, CurrentFile);
+		Mask |= ToBitboard(Piece::RankFileToSquare(CurrentRank, CurrentFile));
 	}
 
 	for (int CurrentRank = Rank + 1, CurrentFile = File - 1; CurrentRank <= 6 && CurrentFile >= 1; CurrentRank++, CurrentFile--)
 	{
-		Mask |= 1ull << Piece::RankFileToSquare(CurrentRank, CurrentFile);
+		Mask |= ToBitboard(Piece::RankFileToSquare(CurrentRank, CurrentFile));
 	}
 
 	for (int CurrentRank = Rank - 1, CurrentFile = File + 1; CurrentRank >= 1 && CurrentFile <= 6; CurrentRank--, CurrentFile++)
 	{
-		Mask |= 1ull << Piece::RankFileToSquare(CurrentRank, CurrentFile);
+		Mask |= ToBitboard(Piece::RankFileToSquare(CurrentRank, CurrentFile));
 	}
 
 	for (int CurrentRank = Rank - 1, CurrentFile = File - 1; CurrentRank >= 1 && CurrentFile >= 1; CurrentRank--, CurrentFile--)
 	{
-		Mask |= 1ull << Piece::RankFileToSquare(CurrentRank, CurrentFile);
+		Mask |= ToBitboard(Piece::RankFileToSquare(CurrentRank, CurrentFile));
 	}
 
 	return Mask;
@@ -90,11 +90,11 @@ static constexpr uint64_t RookMask(int Square)
 
 	uint64_t Mask = 0;
 
-	for (int CurrentRank = Rank + 1; CurrentRank <= 6; CurrentRank++) Mask |= 1ull << Piece::RankFileToSquare(CurrentRank, File);
-	for (int CurrentRank = Rank - 1; CurrentRank >= 1; CurrentRank--) Mask |= 1ull << Piece::RankFileToSquare(CurrentRank, File);
+	for (int CurrentRank = Rank + 1; CurrentRank <= 6; CurrentRank++) Mask |= ToBitboard(Piece::RankFileToSquare(CurrentRank, File));
+	for (int CurrentRank = Rank - 1; CurrentRank >= 1; CurrentRank--) Mask |= ToBitboard(Piece::RankFileToSquare(CurrentRank, File));
 
-	for (int CurrentRank = File + 1; CurrentRank <= 6; CurrentRank++) Mask |= 1ull << Piece::RankFileToSquare(Rank, CurrentRank);
-	for (int CurrentRank = File - 1; CurrentRank >= 1; CurrentRank--) Mask |= 1ull << Piece::RankFileToSquare(Rank, CurrentRank);
+	for (int CurrentRank = File + 1; CurrentRank <= 6; CurrentRank++) Mask |= ToBitboard(Piece::RankFileToSquare(Rank, CurrentRank));
+	for (int CurrentRank = File - 1; CurrentRank >= 1; CurrentRank--) Mask |= ToBitboard(Piece::RankFileToSquare(Rank, CurrentRank));
 
 	return Mask;
 }
@@ -123,7 +123,7 @@ static constexpr uint64_t KingMask(int Square)
 				break;
 			}
 
-			Mask |= 1ull << Piece::RankFileToSquare(CurrentRank, CurrentFile);
+			Mask |= ToBitboard(Piece::RankFileToSquare(CurrentRank, CurrentFile));
 		}
 	}
 
@@ -174,7 +174,7 @@ static constexpr uint64_t CreateLegalMoveBitboard(PieceType Type, int Square, ui
 
 	for (int i = 0; i < 4; i++)
 	{
-		for (int Distance = 0; Distance < 8; Distance++)
+		for (int Distance = 1; Distance < 8; Distance++)
 		{
 			int CurrentRank = Rank + DirRanks[i] * Distance;
 			int CurrentFile = File + DirFiles[i] * Distance;
@@ -185,7 +185,7 @@ static constexpr uint64_t CreateLegalMoveBitboard(PieceType Type, int Square, ui
 				break;
 			}
 
-			uint64_t SquareBit = 1ull << Piece::RankFileToSquare(CurrentRank, CurrentFile);
+			uint64_t SquareBit = ToBitboard(Piece::RankFileToSquare(CurrentRank, CurrentFile));
 
 			Bitboard |= SquareBit;
 
@@ -226,8 +226,8 @@ void Attacks::Init()
 	{
 		// invert the colors since the attacks are for the opposite color
 
-		PawnAttacks[White][Square] = PawnMask(Square, Black);
-		PawnAttacks[Black][Square] = PawnMask(Square, White);
+		PawnAttacks[White][Square] = PawnMask(Square, White);
+		PawnAttacks[Black][Square] = PawnMask(Square, Black);
 
 		KnightAttacks[Square] = KnightMask(Square);
 
@@ -245,6 +245,58 @@ void Attacks::Init()
 		BishopMovesLookup[Square] = CreateLookupTable(Bishop, Square, BishopMagics[Square], BishopShifts[Square]);
 		RookMovesLookup[Square] = CreateLookupTable(Rook, Square, RookMagics[Square], RookShifts[Square]);
 	}
+
+	for (int Square1 = 0; Square1 < AlgebraicSquare_Count; Square1++)
+	{
+		uint64_t Square1Bitboard = ToBitboard(Square1);
+
+		for (const PieceType PieceType : { Bishop, Rook })
+		{
+			uint64_t (Attacks::*GetMovesFunc)(int Square, const uint64_t AllOccupiedBitboard, const uint64_t FriendlyPiecesBitboard) const =
+				PieceType == Bishop ? &Attacks::GetBishopMoves : &Attacks::GetRookMoves;
+
+			for (int Square2 = 0; Square2 < AlgebraicSquare_Count; Square2++)
+			{
+				uint64_t Square2Bitboard = ToBitboard(Square2);
+
+				if (IsBitSet(GetPseudoAttacks(Square1, PieceType), Square2))
+				{
+					LineThrough[Square1][Square2] = ((this->*GetMovesFunc)(Square1, 0, 0) & (this->*GetMovesFunc)(Square2, 0, 0)) | Square1Bitboard | Square2Bitboard;
+					RayThrough[Square1][Square2] = (this->*GetMovesFunc)(Square1, 0, 0) & ((this->*GetMovesFunc)(Square2, Square1Bitboard, 0) | Square2Bitboard);
+					SquaresBetween[Square1][Square2] = ((this->*GetMovesFunc)(Square1, Square2Bitboard, 0) & (this->*GetMovesFunc)(Square2, Square1Bitboard, 0)) & ~Square1Bitboard;
+				}
+
+				SquaresBetween[Square1][Square2] |= Square2Bitboard;
+			}
+		}
+	}
+}
+
+uint64_t Attacks::GetPseudoAttacks(int Square, PieceType Type, PieceColor Color, const uint64_t AllOccupiedBitboard) const
+{
+	switch (Type)
+	{
+	case Null:
+		ASSERT(false, 0);
+		break;
+	case King:
+		return KingAttacks[Square];
+	case Queen:
+		return GetBishopMoves(Square, AllOccupiedBitboard, 0) | GetRookMoves(Square, AllOccupiedBitboard, 0);
+	case Bishop:
+		return GetBishopMoves(Square, AllOccupiedBitboard, 0);
+	case Knight:
+		return KnightAttacks[Square];
+	case Rook:
+		return GetRookMoves(Square, AllOccupiedBitboard, 0);
+	case Pawn:
+		return PawnAttacks[Color][Square];
+	default:
+		ASSERT(false, 0);
+		break;
+	}
+
+	return 0;
 }
 
 uint64_t Attacks::GetBishopMoves(int Square, const uint64_t AllOccupiedBitboard, const uint64_t FriendlyPiecesBitboard) const
@@ -271,10 +323,10 @@ uint64_t Attacks::GetQueenMoves(int Square, const uint64_t AllOccupiedBitboard, 
 		GetRookMoves(Square, AllOccupiedBitboard, FriendlyPiecesBitboard);
 }
 
-bool Attacks::IsAnyPieceAttacking(int Square, PieceColor Color, PieceType Type,
+bool Attacks::IsPieceAttacking(int Square, PieceColor Color, PieceType Type,
 	uint64_t AttackingPiecesBitboard, const uint64_t AllOccupiedBitboard, const uint64_t FriendlyPiecesBitboard) const
 {
-	uint64_t(Attacks:: * GetMovesFunc)(int Square, const uint64_t AllOccupiedBitboard, const uint64_t FriendlyPiecesBitboard) const =
+	uint64_t (Attacks::*GetMovesFunc)(int Square, const uint64_t AllOccupiedBitboard, const uint64_t FriendlyPiecesBitboard) const =
 		Type == Bishop ? &Attacks::GetBishopMoves :
 		Type == Rook ? &Attacks::GetRookMoves :
 		Type == Queen ? &Attacks::GetQueenMoves :
