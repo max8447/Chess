@@ -15,8 +15,11 @@
 #define COL_PAWNPROMOTION_BG IM_COL32_WHITE
 #define COL_ENDSCREEN_OVERLAY IM_COL32(0, 0, 0, 127)
 
+// #define DO_POSITION_CHECK
+
 constexpr bool bDoMoveGenerationTest = true;
-static int MoveGenerationDepth = 4;
+constexpr bool bUseSlowMoveGenerationTest = false;
+static int MoveGenerationDepth = 3;
 
 template<>
 struct std::less<SpecialMove>
@@ -315,8 +318,8 @@ void ChessEngine::LoadFENPosition(const char* InFENString)
 	ASSERT((GamePosition.Bitboards.Occupied[White] | GamePosition.Bitboards.Occupied[Black]) == GamePosition.Bitboards.AllOccupied);
 	ASSERT((GamePosition.Bitboards.Occupied[White] & GamePosition.Bitboards.Occupied[Black]) == 0);
 
-	ASSERT(std::popcount(GamePosition.Bitboards.Pieces[White][King]) == 1 && "There may only ever be 1 white king on the board!");
-	ASSERT(std::popcount(GamePosition.Bitboards.Pieces[Black][King]) == 1 && "There may only ever be 1 black king on the board!");
+	ASSERT(std::popcount(GamePosition.Bitboards.Pieces[White][King]) == 1 && "There must always be exactly 1 white king on the board!");
+	ASSERT(std::popcount(GamePosition.Bitboards.Pieces[Black][King]) == 1 && "There must always be exactly 1 black king on the board!");
 
 	ASSERT(GamePosition.GetKingSquare(White) && "No white king on board!");
 	ASSERT(GamePosition.GetKingSquare(Black) && "No black king on board!");
@@ -705,7 +708,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 					bIsMoveAllowed = false;
 				}
 			}
-			else if (AbsDeltaRank == 2 && AbsDeltaFile == 0 && !CapturedPiece) // pawn's first move
+			else if (AbsDeltaRank == 2 && AbsDeltaFile == 0 && !CapturedPiece) // pawn double push
 			{
 				int SecondRank = MovingColor == White ? 1 : 6;
 
@@ -744,13 +747,15 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 		{
 			if (!bIsMoveAllowed && !CapturedPiece && !IsAttacked(MovingPiece)) // might be trying to castle?
 			{
-				if (NewFile + DeltaFileDir >= 0 && NewFile + DeltaFileDir <= 7)
+				int CastlingRookFile = NewFile + DeltaFileDir;
+
+				if (CastlingRookFile >= 0 && CastlingRookFile <= 7)
 				{
-					int CastlingRookSquare = Piece::RankFileToSquare(OldRank, NewFile + DeltaFileDir);
+					int CastlingRookSquare = Piece::RankFileToSquare(OldRank, CastlingRookFile);
 
 					if (!IsBitSet(GamePosition.Bitboards.Pieces[MovingColor][Rook], CastlingRookSquare))
 					{
-						int CastlingRookFile = NewFile + 2 * DeltaFileDir;
+						CastlingRookFile = NewFile + 2 * DeltaFileDir;
 
 						if (CastlingRookFile >= 0 && CastlingRookFile <= 7)
 						{
@@ -831,7 +836,7 @@ bool ChessEngine::IsAllowedMove(Piece* MovingPiece, int NewSquare, bool bAllowPs
 			UndoInfo UndoInfo;
 			MakeMove(MovingPiece, *OutSpecialMove, UndoInfo);
 
-			if (OutSpecialMove->Type & Castle && OutSpecialMove->OtherPieceMove.IsAllowed())
+			if ((OutSpecialMove->Type & Castle) && OutSpecialMove->OtherPieceMove.IsAllowed())
 			{
 				// a castling king may not pass through a piece that is under attack
 
@@ -875,7 +880,7 @@ void ChessEngine::MakeMove(Piece* MovedPiece, const SpecialMove& Move, UndoInfo&
 	{
 		if (IsCapture(Move))
 		{
-			OtherPiece = UndoInfo.CapturedPiece = GetCapturedPiece(Move);
+			OtherPiece = UndoInfo.CapturedPiece = GetCapturedPiece(Move, true);
 		}
 		else if (Move.Type & Castle)
 		{
@@ -884,7 +889,7 @@ void ChessEngine::MakeMove(Piece* MovedPiece, const SpecialMove& Move, UndoInfo&
 		
 		if (Move.Type & PawnPromotion)
 		{
-			if (Move.ExtraInfo.PromotedPieceType != Null) // we don't filter this out in Move.IsAllowed() since we need to allow it for move gen
+			if (Move.ExtraInfo.PromotedPieceType != Null) // we don't filter this out in Move.IsAllowed() since we need to allow it for IsAllowedMove()
 			{
 				MovedPiece->Type = Move.ExtraInfo.PromotedPieceType;
 			}
@@ -897,7 +902,7 @@ void ChessEngine::MakeMove(Piece* MovedPiece, const SpecialMove& Move, UndoInfo&
 		{
 			CapturePiece(OtherPiece);
 		}
-		else if (Move.Type & Castle) // don't do captures here since we update MovedPiece above
+		else if (Move.Type & Castle)
 		{
 			MovePieceTo(OtherPiece, Move.OtherPieceMove);
 		}
@@ -1001,6 +1006,7 @@ void ChessEngine::MakeBitboardsMove(Piece* MovedPiece, Piece* OtherPiece, const 
 
 			if (Move.ExtraInfo.PromotedPieceType != Null) // we don't filter this out in Move.IsAllowed() since we need to allow it for move gen
 			{
+				// set it in old square since MoveTo() changes it below
 				SetBit(GamePosition.Bitboards.Pieces[MovedPiece->Color][Move.ExtraInfo.PromotedPieceType], Move.Move.OldSquare);
 			}
 		}
@@ -1021,6 +1027,7 @@ void ChessEngine::UnMakeBitboardsMove(Piece* MovedPiece, Piece* OtherPiece, cons
 		{
 			if (Move.ExtraInfo.PromotedPieceType != Null) // we don't filter this out in Move.IsAllowed() since we need to allow it for move gen
 			{
+				// clear it from old square since MoveTo() changed it above
 				ClearBit(GamePosition.Bitboards.Pieces[MovedPiece->Color][Move.ExtraInfo.PromotedPieceType], Move.Move.OldSquare);
 			}
 
@@ -1050,7 +1057,7 @@ Piece* ChessEngine::GetMovedPiece(const SpecialMove& Move, bool bHasMoveHappened
 	return GetPiece(Square);
 }
 
-Piece* ChessEngine::GetCapturedPiece(const SpecialMove& Move) const
+Piece* ChessEngine::GetCapturedPiece(const SpecialMove& Move, bool bHasMoveHappened) const
 {
 	ASSERT(IsCapture(Move), nullptr);
 
@@ -1136,12 +1143,16 @@ void ChessEngine::FinishMove(Piece* MovingPiece, const SpecialMove& Move)
 	{
 		GamePosition.GameState.HalfMoveClock = 0;
 	}
+	else
+	{
+		GamePosition.GameState.HalfMoveClock++;
+	}
 	
 	Piece* OtherPiece = nullptr;
 
 	if (IsCapture(Move))
 	{
-		OtherPiece = GetCapturedPiece(Move);
+		OtherPiece = GetCapturedPiece(Move, true);
 
 		CapturePiece(OtherPiece);
 	}
@@ -1228,8 +1239,6 @@ void ChessEngine::TryMoveTo(Piece* MovingPiece, int NewSquare)
 
 	if (bIsMoveAllowed && OutSpecialMove.IsAllowed())
 	{
-		GamePosition.GameState.HalfMoveClock++; // this *might* get set to zero in CapturePiece() or FinishMove()
-
 		FinishMove(MovingPiece, OutSpecialMove);
 	}
 }
@@ -1255,7 +1264,7 @@ void ChessEngine::PromotePawn(Piece* PromotingPawn, PieceType NewPieceType)
 	LastMove.Type |= PawnPromotion;
 	LastMove.ExtraInfo.PromotedPieceType = NewPieceType;
 
-	ClearBit(GamePosition.Bitboards.Pieces[PromotingPawn->Color][Pawn], LastMove.Move.NewSquare);
+	ClearBit(GamePosition.Bitboards.Pieces[PromotingPawn->Color][Pawn], LastMove.Move.OldSquare);
 	SetBit(GamePosition.Bitboards.Pieces[PromotingPawn->Color][NewPieceType], LastMove.Move.NewSquare);
 
 	PromotingPawn->Type = NewPieceType;
@@ -1409,7 +1418,7 @@ int ChessEngine::GuessMoveScore(const SpecialMove& Move) const
 
 	if (IsCapture(Move))
 	{
-		Piece* CapturedPiece = GetCapturedPiece(Move);
+		Piece* CapturedPiece = GetCapturedPiece(Move, true);
 
 		Score += 10 * PieceValues[CapturedPiece->Type]
 			- PieceValues[MovedPiece->Type];
@@ -1575,6 +1584,8 @@ size_t ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot
 		Captures = Ep = Castles = Promotions = 0;
 	}
 
+	ASSERT(Depth >= 0, 0);
+
 	if (Depth == 0)
 	{
 		return 1;
@@ -1586,8 +1597,15 @@ size_t ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot
 	Moves.reserve(MaxAvailableMoves);
 
 	constexpr bool bAllowPseudolegalMoves = false;
-	// GenerateMoves<Legal>(GamePosition, Color, &Moves);
-	GetAllAvailableMoves(Color, &Moves, bAllowPseudolegalMoves);
+
+	if constexpr (bUseSlowMoveGenerationTest)
+	{
+		GetAllAvailableMoves(Color, &Moves, bAllowPseudolegalMoves);
+	}
+	else
+	{
+		GenerateMoves<Legal>(GamePosition, Color, &Moves);
+	}
 
 #ifndef _DEBUG
 	if (Depth == 1)
@@ -1611,6 +1629,10 @@ size_t ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot
 		volatile uint64_t OldPieceBoard = GamePosition.Bitboards.Pieces[MovedPiece->Color][MovedPiece->Type];
 		volatile uint64_t OldOccupancyPieceBoard = GamePosition.Bitboards.Occupied[MovedPiece->Color];
 		volatile uint64_t OldOccupancyBoard = GamePosition.Bitboards.AllOccupied;
+
+#ifdef DO_POSITION_CHECK
+		Position OldPosition = GamePosition;
+#endif
 #endif
 
 		UndoInfo UndoInfo;
@@ -1660,7 +1682,40 @@ size_t ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot
 
 		UnMakeMove(MovedPiece, Move, UndoInfo);
 
+		GamePosition.GameState.EnpassantSquare = OldEnpassantSquare;
+		GamePosition.GameState.AvailableCastlingRights = OldCastlingRights;
+
 #ifdef _DEBUG
+#ifdef DO_POSITION_CHECK
+		if (memcmp(&OldPosition, &GamePosition, offsetof(Position, Attacks)) != 0 &&
+			memcmp(((char*)&OldPosition) + offsetof(Position, Attacks) + sizeof(Attacks),
+				((char*)&GamePosition) + offsetof(Position, Attacks) + sizeof(Attacks),
+				sizeof(Position) - sizeof(Attacks) - offsetof(Position, Attacks)) != 0)
+		{
+			printf("Position mismatch after move\n");
+		
+			// compare every bitboard
+			for (int c = 0; c < 2; c++)
+			{
+				for (int p = 0; p < 6; p++)
+				{
+					if (OldPosition.Bitboards.Pieces[c][p] != GamePosition.Bitboards.Pieces[c][p])
+					{
+						printf("Piece BB mismatch color=%d type=%d\n", c, p);
+					}
+				}
+			}
+		
+			if (OldPosition.GameState.EnpassantSquare != GamePosition.GameState.EnpassantSquare)
+				printf("EP mismatch\n");
+		
+			if (OldPosition.GameState.AvailableCastlingRights != GamePosition.GameState.AvailableCastlingRights)
+				printf("Castling mismatch\n");
+		
+			__debugbreak();
+		}
+#endif
+
 		volatile uint64_t NewPieceBoard = GamePosition.Bitboards.Pieces[MovedPiece->Color][MovedPiece->Type]; // what if it's a pawn promotion...
 		volatile uint64_t NewOccupancyPieceBoard = GamePosition.Bitboards.Occupied[MovedPiece->Color];
 		volatile uint64_t NewOccupancyBoard = GamePosition.Bitboards.AllOccupied;
@@ -1669,9 +1724,6 @@ size_t ChessEngine::MoveGenerationTest(PieceColor Color, int Depth, bool bIsRoot
 		ASSERT(OldOccupancyPieceBoard == NewOccupancyPieceBoard, 0);
 		ASSERT(OldOccupancyBoard == NewOccupancyBoard, 0);
 #endif
-
-		GamePosition.GameState.EnpassantSquare = OldEnpassantSquare;
-		GamePosition.GameState.AvailableCastlingRights = OldCastlingRights;
 	}
 
 	if (bIsRoot)
@@ -1869,8 +1921,8 @@ void ChessEngine::SelectPiece(const ImVec2& Pos)
 				AvailableMoves.clear();
 				AvailableMoves.reserve(MaxAvailableMoves);
 
-				GetAvailableMoves(SelectedPiece, &AvailableMoves, bAllowPseudolegalMoves);
-				// GenerateMoves<Legal>(GamePosition, &AvailableMoves);
+				// GetAvailableMoves(SelectedPiece, &AvailableMoves, bAllowPseudolegalMoves);
+				GenerateMoves<Legal>(GamePosition, &AvailableMoves);
 			}
 		}
 	}
@@ -2411,8 +2463,6 @@ void ChessEngine::DrawEndScreen() const
 
 void ChessEngine::Update()
 {
-	// INT3; // TODO: FIX CASTLING (let move gen run it will trigger assert), FIX CAPTURED PIECES (it can't be this easy, no way it works without edge cases.)
-
 	if (GamePosition.GameState.CurrentMove == PlayerColor || GamePosition.GameState.bGameEnded || bEnableBot == false)
 	{
 		HandleInput();

@@ -14,17 +14,22 @@ struct Bitboard
 
 	void MoveTo(PieceColor Color, PieceType Type, int OldSquare, int NewSquare);
 
-	template<PieceColor Color, typename... PieceTypes>
-	uint64_t GetPieces(PieceTypes... Types)
+	template<typename... PieceTypes>
+	uint64_t GetPieces(PieceColor Color, PieceTypes... Types) const
 	{
 		return (Pieces[Color][Types] | ...);
 	}
 
 	template<typename... PieceTypes>
-	uint64_t GetPieces(PieceTypes... Types)
+	uint64_t GetPieces(PieceTypes... Types) const
 	{
-		return GetPieces<White, PieceTypes...>(Types...)
-			|  GetPieces<Black, PieceTypes...>(Types...);
+		return GetPieces<PieceTypes...>(White, Types...)
+			|  GetPieces<PieceTypes...>(Black, Types...);
+	}
+
+	uint64_t GetAllPieces() const
+	{
+		return GetPieces(King, Queen, Bishop, Knight, Rook, Pawn);
 	}
 };
 

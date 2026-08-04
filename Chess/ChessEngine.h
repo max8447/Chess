@@ -97,7 +97,7 @@ private:
 	void UnMakeBitboardsMove(Piece* MovedPiece, Piece* OtherPiece, const SpecialMove& Move) const;
 
 	Piece* GetMovedPiece(const SpecialMove& Move, bool bHasMoveHappened) const;
-	Piece* GetCapturedPiece(const SpecialMove& Move) const;
+	Piece* GetCapturedPiece(const SpecialMove& Move, bool bHasMoveHappened) const;
 	Piece* GetCastlingRook(CastlingRights CastlingRight, PieceColor Color, SimpleMove KingMove, bool bHasMoveHappened) const;
 
 	bool IsAttacked(Piece* AttackedPiece) const;

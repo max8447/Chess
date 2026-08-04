@@ -45,7 +45,7 @@ inline bool operator>=(const ImVec2& other) const { return x >= other.x && y >= 
 #endif
 
 #ifdef _DEBUG
-#define ASSERT(cond, ...) IM_ASSERT(cond)
+#define ASSERT(cond, ...) assert(cond)
 #else // _DEBUG
 #ifdef MAX_SPEED
 #define ASSERT(...)

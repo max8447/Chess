@@ -121,3 +121,40 @@ void Position::CalculateCheckData(PieceColor Color) const
 
 	CheckingPieces = GetAttackers(KingSquare) & Bitboards.Occupied[~Color];
 }
+
+bool Position::IsLegalMove(const SpecialMove& Move) const
+{
+	const PieceColor Color = GameState.CurrentMove;
+	const int KingSquare = GetKingSquare(Color);
+
+	int OldSquare = Move.Move.OldSquare;
+	int NewSquare = Move.Move.NewSquare;
+
+	if (Move.Type & Castle)
+	{
+		NewSquare = (NewSquare > OldSquare ? StaticCastlingRights::KingSide : StaticCastlingRights::QueenSide)
+			[Color].Move.NewSquare;
+
+		Direction Step = NewSquare > OldSquare ? West : East;
+
+		for (int CurrentSquare = NewSquare; CurrentSquare != OldSquare; CurrentSquare += Step)
+		{
+			if (GetAttackers(CurrentSquare) & Bitboards.Occupied[~Color])
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	if (KingSquare == OldSquare)
+	{
+		return (GetAttackers(NewSquare)
+			& Bitboards.Occupied[~Color]
+			& (Bitboards.GetAllPieces() ^ ToBitboard(OldSquare))) == 0;
+	}
+
+	return !(PinnedPieces[Color] & ToBitboard(OldSquare))
+		|| (Attacks.LineThrough[KingSquare][OldSquare] & ToBitboard(NewSquare));
+}

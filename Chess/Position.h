@@ -55,4 +55,6 @@ public:
 
 	void AddCastlingRight(PieceColor Color, int RookOldSquare);
 	void CalculateCheckData(PieceColor Color) const;
+
+	bool IsLegalMove(const SpecialMove& Move) const;
 };

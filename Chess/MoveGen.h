@@ -8,7 +8,7 @@ enum GenType
 {
 	Legal,			// all legal moves
 	Quiet,			// all non-capture, non-promotion, non-castle moves
-	CapturesOnly,		// all capture-only moves
+	CapturesOnly,	// all capture-only moves
 	Evasions,		// all moves which escape check
 	NonEvasions,	// all moves which don't escape check
 };
